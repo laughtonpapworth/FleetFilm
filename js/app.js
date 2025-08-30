@@ -1,13 +1,19 @@
-/* Fleet Film App (Film List = single Next button; clean nav; archive/export intact)
+/* Fleet Film App (Film List has a single Next button; robust for old data; mobile-friendly)
    Pipeline:
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded -> archived
 
-   Film List rules (single Next button):
-     intake        -> "Move to Basic Criteria"         (status -> review_basic)
-     review_basic  -> "Validate & Move to UK Check"    (validates runtime<=150 & language; else jumps to Basic page)
-     uk_check      -> "Open UK Distributor Check"      (navigate to UK page; decision is there)
-     viewing       -> "Move to Voting"                 (status -> voting)
-     voting        -> no Next button                   (vote on Voting page)
+   Film List "Next" rules (exactly one button per film):
+     (missing status) -> treat as "intake" => "Move to Basic Criteria"
+     intake           -> "Move to Basic Criteria"         (status -> review_basic)
+     review_basic     -> "Validate & Move to UK Check"    (runtime<=150 & language required; else sends you to Basic)
+     uk_check         -> "Open UK Distributor Check"      (navigate to UK page)
+     viewing          -> "Move to Voting"                 (status -> voting)
+     voting           -> no "Next" (vote on Voting page)
+     approved/discarded/archived -> never shown on Film List
+
+   Notes:
+     - Removed Firestore queries that needed composite indexes. We fetch all films and filter/sort client-side.
+     - Old records missing fields won’t block the UI anymore.
 */
 
 let app, auth, db;
@@ -307,9 +313,9 @@ async function submitFilm(){
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Fetch helpers (index-free) ---------- */
-async function fetchByStatus(status){
-  const snap = await db.collection('films').where('status','==', status).get();
+/* ---------- Fetch helpers (no composite indexes) ---------- */
+async function fetchAllFilms(){
+  const snap = await db.collection('films').get();
   const docs = snap.docs.sort((a, b) => {
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
@@ -317,19 +323,12 @@ async function fetchByStatus(status){
   });
   return docs;
 }
-
-async function fetchNotInStatuses(statuses){
-  const snap = await db.collection('films').where('status','not-in', statuses).get();
-  const docs = snap.docs.sort((a, b) => {
-    const ta = a.data().createdAt?.toMillis?.() || 0;
-    const tb = b.data().createdAt?.toMillis?.() || 0;
-    return tb - ta;
-  });
-  return docs;
+async function fetchByStatus(status){
+  const all = await fetchAllFilms();
+  return all.filter(d => (d.data().status || 'intake') === status);
 }
 
 /* ---------- Rendering helpers ---------- */
-
 function filmListCard(f, nextHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -370,17 +369,21 @@ function detailCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* ---------- Film List (single Next action) ---------- */
-
+/* ---------- Film List (single Next action; robust defaults) ---------- */
+function normalizeStatus(s){
+  // Treat missing/empty as 'intake'
+  if(!s || typeof s !== 'string') return 'intake';
+  return s;
+}
 function nextActionFor(f){
-  // Returns {label, type, handler} where type is 'update' (status change) or 'nav' (navigate)
-  switch(f.status){
+  const status = normalizeStatus(f.status);
+  switch(status){
     case 'intake':
       return { label: 'Move to Basic Criteria', type: 'update', handler: async (ref)=>{ await ref.update({ status:'review_basic' }); } };
     case 'review_basic':
       return { label: 'Validate & Move to UK Check', type: 'update', handler: async (ref)=>{
         const snap = await ref.get();
-        const x = snap.data();
+        const x = snap.data() || {};
         const okRuntime = (x.runtimeMinutes != null) && (x.runtimeMinutes <= 150);
         const okLang = (x.language || '').trim().length > 0;
         if(!okRuntime || !okLang){
@@ -395,32 +398,39 @@ function nextActionFor(f){
     case 'viewing':
       return { label: 'Move to Voting', type: 'update', handler: async (ref)=>{ await ref.update({ status:'voting' }); } };
     case 'voting':
-      return null; // no next; vote on Voting page
+      return null; // vote on Voting page
     default:
-      return null;
+      return null; // approved/discarded/archived never listed here
   }
 }
 
 async function loadFilmList(){
-  const docs = await fetchNotInStatuses(['approved','discarded','archived']);
+  const all = await fetchAllFilms();
+  const docs = all.filter(d=>{
+    const st = normalizeStatus(d.data().status);
+    return !['approved','discarded','archived'].includes(st);
+  });
+
   els.filmList.innerHTML = '';
   if(!docs.length){
     els.filmList.innerHTML = '<div class="notice">Empty. Use Submit to add a film.</div>';
     return;
   }
+
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const act = nextActionFor(f);
     const right = act ? `<button class="btn btn-primary" data-next="${f.id}">${act.label}</button>` : '';
     els.filmList.insertAdjacentHTML('beforeend', filmListCard(f, right));
   });
+
   els.filmList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.getAttribute('data-next');
       const ref = db.collection('films').doc(id);
       const snap = await ref.get();
       if(!snap.exists) return;
-      const f = snap.data();
+      const f = snap.data() || {};
       const act = nextActionFor(f);
       if(!act) return;
       try{
@@ -439,7 +449,7 @@ async function loadBasic(){
   if(!docs.length){ els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const form = (['admin','committee'].includes(state.role)) ? `
+    const form = `
       <div class="form-grid">
         <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
         <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
@@ -452,12 +462,11 @@ async function loadBasic(){
         <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
         <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
         <div class="actions span-2">
-          <button class="btn btn-accent" data-act="basic-save" data-id="${f.id}">Save</button>
           <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → UK Check</button>
           <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
         </div>
       </div>
-    ` : '';
+    `;
     els.basicList.insertAdjacentHTML('beforeend', detailCard(f, form));
   });
   els.basicList.querySelectorAll('[data-edit]').forEach(inp=>{
@@ -480,12 +489,12 @@ async function loadUk(){
   if(!docs.length){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role)) ? `
+    const actions = `
       <div class="actions">
         <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor ✓</button>
         <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
       </div>
-    ` : '';
+    `;
     els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -498,12 +507,12 @@ async function loadViewing(){
   if(!docs.length){ els.viewingList.innerHTML = '<div class="notice">Viewing queue is empty.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role)) ? `
+    const actions = `
       <div class="actions">
         <button class="btn btn-primary" data-act="to-voting" data-id="${f.id}">→ Voting</button>
         <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
       </div>
-    ` : '';
+    `;
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -545,7 +554,7 @@ async function castVote(filmId, value){
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
       value, createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }, {merge:true});
-    // TESTING RULE: 1 yes -> approved, 1 no -> discarded
+    // TEST setting: 1 yes -> approved, 1 no -> discarded
     await checkAutoOutcome(filmId);
     loadVote();
   }catch(e){ alert(e.message); }
@@ -583,12 +592,12 @@ async function loadApproved(){
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role)) ? `
+    const actions = `
       <div class="actions">
         <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">Send back to Voting</button>
         <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
         <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>` : '';
+      </div>`;
     els.approvedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.approvedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -614,7 +623,7 @@ async function exportApprovedCSV(){
     const line = [
       f.title || '',
       f.year || '',
-      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // requested Yes/No
+      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // Yes/No
       f.link || '',
       f.synopsis || '',
       f.runtimeMinutes ?? '',
@@ -648,11 +657,11 @@ async function loadDiscarded(){
   if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role)) ? `
+    const actions = `
       <div class="actions">
         <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Film List</button>
         <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>` : '';
+      </div>`;
     els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -667,23 +676,17 @@ async function loadArchive(){
     const f = { id: doc.id, ...doc.data() };
     const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
     const right = origin ? `<span class="badge">${origin}</span>` : '';
-    // Reuse compact Film List card but without Next button
     els.archiveList.insertAdjacentHTML('beforeend', filmListCard(f, right));
   });
 }
 
 /* ---------- Admin actions ---------- */
 async function adminAction(action, filmId){
-  if(!['admin','committee'].includes(state.role)){
-    alert('Committee only'); return;
-  }
   const ref = db.collection('films').doc(filmId);
   try{
-    if(action==='to-basic') await ref.update({ status:'review_basic' });
-    if(action==='basic-save'){ /* fields auto-save on change */ }
     if(action==='basic-validate'){
       const snap = await ref.get();
-      const f = snap.data();
+      const f = snap.data() || {};
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
       const okLang = (f.language || '').trim().length > 0;
       if(!okRuntime){ alert('Runtime must be 2h30 (150 min) or less.'); return; }
