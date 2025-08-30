@@ -54,7 +54,10 @@ const els = {
   // submit form
   title: document.getElementById('f-title'),
   year: document.getElementById('f-year'),
-   submitBtn: document.getElementById('btn-submit-film'),
+  distributor: document.getElementById('f-distributor'),
+  link: document.getElementById('f-link'),
+  synopsis: document.getElementById('f-synopsis'),
+  submitBtn: document.getElementById('btn-submit-film'),
   submitMsg: document.getElementById('submit-msg'),
   // auth
   email: document.getElementById('email'),
