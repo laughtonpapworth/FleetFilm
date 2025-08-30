@@ -1,19 +1,6 @@
-/* Fleet Film App (Film List has a single Next button; robust for old data; mobile-friendly)
+/* Fleet Film App (Film List shows ONE working Next button; no 'not-in' query) 
    Pipeline:
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded -> archived
-
-   Film List "Next" rules (exactly one button per film):
-     (missing status) -> treat as "intake" => "Move to Basic Criteria"
-     intake           -> "Move to Basic Criteria"         (status -> review_basic)
-     review_basic     -> "Validate & Move to UK Check"    (runtime<=150 & language required; else sends you to Basic)
-     uk_check         -> "Open UK Distributor Check"      (navigate to UK page)
-     viewing          -> "Move to Voting"                 (status -> voting)
-     voting           -> no "Next" (vote on Voting page)
-     approved/discarded/archived -> never shown on Film List
-
-   Notes:
-     - Removed Firestore queries that needed composite indexes. We fetch all films and filter/sort client-side.
-     - Old records missing fields won’t block the UI anymore.
 */
 
 let app, auth, db;
@@ -24,7 +11,7 @@ const els = {
   nav: document.getElementById('nav'),
   signOut: document.getElementById('btn-signout'),
   // lists
-  filmList: document.getElementById('intake-list'),      // Film List container
+  filmList: document.getElementById('intake-list'),      // Film List container (kept id for compatibility)
   basicList: document.getElementById('basic-list'),
   ukList: document.getElementById('uk-list'),
   viewingList: document.getElementById('viewing-list'),
@@ -44,7 +31,7 @@ const els = {
     discarded: document.getElementById('view-discarded'),
     archive: document.getElementById('view-archive'),
   },
-  // nav buttons (ensure your HTML has these, in this order)
+  // nav buttons
   navButtons: {
     submit: document.getElementById('nav-submit'),
     intake: document.getElementById('nav-intake'),
@@ -189,7 +176,7 @@ function mapMpaaToUk(mpaa){
   return s;
 }
 
-/* ---------- Submit (Title+Year + picker) ---------- */
+/* ---------- Submit with picker ---------- */
 function showPicker(items){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -313,9 +300,9 @@ async function submitFilm(){
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Fetch helpers (no composite indexes) ---------- */
-async function fetchAllFilms(){
-  const snap = await db.collection('films').get();
+/* ---------- Fetch helpers (avoid not-in) ---------- */
+async function fetchByStatus(status){
+  const snap = await db.collection('films').where('status','==', status).get();
   const docs = snap.docs.sort((a, b) => {
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
@@ -323,12 +310,26 @@ async function fetchAllFilms(){
   });
   return docs;
 }
-async function fetchByStatus(status){
-  const all = await fetchAllFilms();
-  return all.filter(d => (d.data().status || 'intake') === status);
+
+async function fetchFilmListDocs(){
+  // Explicitly fetch each status that belongs on Film List
+  const statuses = ['intake','review_basic','uk_check','viewing','voting'];
+  const all = [];
+  for(const s of statuses){
+    const docs = await fetchByStatus(s);
+    all.push(...docs);
+  }
+  // Sort newest first
+  all.sort((a,b)=>{
+    const ta = a.data().createdAt?.toMillis?.() || 0;
+    const tb = b.data().createdAt?.toMillis?.() || 0;
+    return tb - ta;
+  });
+  return all;
 }
 
 /* ---------- Rendering helpers ---------- */
+
 function filmListCard(f, nextHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -369,21 +370,17 @@ function detailCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* ---------- Film List (single Next action; robust defaults) ---------- */
-function normalizeStatus(s){
-  // Treat missing/empty as 'intake'
-  if(!s || typeof s !== 'string') return 'intake';
-  return s;
-}
+/* ---------- Film List (ONE Next button that works) ---------- */
+
 function nextActionFor(f){
-  const status = normalizeStatus(f.status);
-  switch(status){
+  // Returns {label, type, handler}
+  switch(f.status){
     case 'intake':
       return { label: 'Move to Basic Criteria', type: 'update', handler: async (ref)=>{ await ref.update({ status:'review_basic' }); } };
     case 'review_basic':
       return { label: 'Validate & Move to UK Check', type: 'update', handler: async (ref)=>{
         const snap = await ref.get();
-        const x = snap.data() || {};
+        const x = snap.data();
         const okRuntime = (x.runtimeMinutes != null) && (x.runtimeMinutes <= 150);
         const okLang = (x.language || '').trim().length > 0;
         if(!okRuntime || !okLang){
@@ -398,44 +395,38 @@ function nextActionFor(f){
     case 'viewing':
       return { label: 'Move to Voting', type: 'update', handler: async (ref)=>{ await ref.update({ status:'voting' }); } };
     case 'voting':
-      return null; // vote on Voting page
+      return { label: 'Open Voting', type: 'nav', handler: ()=>{ location.hash = 'vote'; } };
     default:
-      return null; // approved/discarded/archived never listed here
+      return null;
   }
 }
 
 async function loadFilmList(){
-  const all = await fetchAllFilms();
-  const docs = all.filter(d=>{
-    const st = normalizeStatus(d.data().status);
-    return !['approved','discarded','archived'].includes(st);
-  });
-
+  const docs = await fetchFilmListDocs();
   els.filmList.innerHTML = '';
   if(!docs.length){
     els.filmList.innerHTML = '<div class="notice">Empty. Use Submit to add a film.</div>';
     return;
   }
-
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const act = nextActionFor(f);
     const right = act ? `<button class="btn btn-primary" data-next="${f.id}">${act.label}</button>` : '';
     els.filmList.insertAdjacentHTML('beforeend', filmListCard(f, right));
   });
-
   els.filmList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.getAttribute('data-next');
       const ref = db.collection('films').doc(id);
+      // Re-evaluate latest status before acting
       const snap = await ref.get();
       if(!snap.exists) return;
-      const f = snap.data() || {};
+      const f = snap.data();
       const act = nextActionFor(f);
       if(!act) return;
       try{
         if(act.type==='update'){ await act.handler(ref); }
-        if(act.type==='nav'){ act.handler(); }
+        else if(act.type==='nav'){ act.handler(); }
         routerFromHash();
       }catch(e){ alert(e.message); }
     });
@@ -462,6 +453,7 @@ async function loadBasic(){
         <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
         <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
         <div class="actions span-2">
+          <button class="btn btn-accent" data-act="basic-save" data-id="${f.id}">Save</button>
           <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → UK Check</button>
           <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
         </div>
@@ -518,7 +510,7 @@ async function loadViewing(){
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- VOTING (Yes before No) ---------- */
+/* ---------- VOTING (Yes first) ---------- */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -554,7 +546,7 @@ async function castVote(filmId, value){
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
       value, createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }, {merge:true});
-    // TEST setting: 1 yes -> approved, 1 no -> discarded
+    // Testing rule: 1 yes -> approved, 1 no -> discarded
     await checkAutoOutcome(filmId);
     loadVote();
   }catch(e){ alert(e.message); }
@@ -623,7 +615,7 @@ async function exportApprovedCSV(){
     const line = [
       f.title || '',
       f.year || '',
-      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // Yes/No
+      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // UK Distributor? column
       f.link || '',
       f.synopsis || '',
       f.runtimeMinutes ?? '',
@@ -684,9 +676,11 @@ async function loadArchive(){
 async function adminAction(action, filmId){
   const ref = db.collection('films').doc(filmId);
   try{
+    if(action==='to-basic') await ref.update({ status:'review_basic' });
+    if(action==='basic-save'){ /* fields auto-save on change */ }
     if(action==='basic-validate'){
       const snap = await ref.get();
-      const f = snap.data() || {};
+      const f = snap.data();
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
       const okLang = (f.language || '').trim().length > 0;
       if(!okRuntime){ alert('Runtime must be 2h30 (150 min) or less.'); return; }
