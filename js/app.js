@@ -1,10 +1,10 @@
-
-/* Fleet Film App (Auth + Firestore)
-   Roles: 'member' (default), 'committee', 'admin'
-   Collections:
-     - users/{uid} : {displayName, email, role}
-     - films/{id}  : {title, year, distributor, link, synopsis, status, criteria:{basic_pass, screen_program_pass}, createdBy, createdAt}
-     - films/{id}/votes/{uid} : {value, createdAt} // value: -1 (No), 1 (Interested), 2 (Strong pick)
+/* Fleet Film App (Updated workflow)
+   Status pipeline:
+     intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded
+   Auto rules:
+     - Voting: at >=3 yes votes -> approved; >=3 no votes -> discarded
+   Metadata captured at Basic stage:
+     runtimeMinutes, language, ageRating, genre, country, hasDisk (bool), availability (string), hasUkDistributor (bool)
 */
 
 let app, auth, db;
@@ -14,23 +14,35 @@ const els = {
   signedIn: document.getElementById('signed-in'),
   nav: document.getElementById('nav'),
   signOut: document.getElementById('btn-signout'),
-  filmList: document.getElementById('film-list'),
-  reviewList: document.getElementById('review-list'),
+  // lists
+  intakeList: document.getElementById('intake-list'),
+  basicList: document.getElementById('basic-list'),
+  ukList: document.getElementById('uk-list'),
+  viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
-  programList: document.getElementById('program-list'),
+  approvedList: document.getElementById('approved-list'),
+  discardedList: document.getElementById('discarded-list'),
+  // views
   views: {
-    films: document.getElementById('view-films'),
+    intake: document.getElementById('view-intake'),
     submit: document.getElementById('view-submit'),
-    review: document.getElementById('view-review'),
+    basic: document.getElementById('view-basic'),
+    uk: document.getElementById('view-uk'),
+    viewing: document.getElementById('view-viewing'),
     vote: document.getElementById('view-vote'),
-    program: document.getElementById('view-program'),
+    approved: document.getElementById('view-approved'),
+    discarded: document.getElementById('view-discarded'),
   },
+  // nav buttons
   navButtons: {
-    films: document.getElementById('nav-films'),
+    intake: document.getElementById('nav-intake'),
     submit: document.getElementById('nav-submit'),
-    review: document.getElementById('nav-review'),
+    basic: document.getElementById('nav-basic'),
+    uk: document.getElementById('nav-uk'),
+    viewing: document.getElementById('nav-viewing'),
     vote: document.getElementById('nav-vote'),
-    program: document.getElementById('nav-program'),
+    approved: document.getElementById('nav-approved'),
+    discarded: document.getElementById('nav-discarded'),
   },
   // submit form
   title: document.getElementById('f-title'),
@@ -38,7 +50,6 @@ const els = {
   distributor: document.getElementById('f-distributor'),
   link: document.getElementById('f-link'),
   synopsis: document.getElementById('f-synopsis'),
-  basicPass: document.getElementById('f-basic-pass'),
   submitBtn: document.getElementById('btn-submit-film'),
   submitMsg: document.getElementById('submit-msg'),
   // auth inputs
@@ -63,25 +74,26 @@ function initFirebase(){
 }
 
 function setView(name){
-  // highlight nav
-  Object.values(els.navButtons).forEach(btn => btn.classList.remove('active'));
+  Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
   if(els.navButtons[name]) els.navButtons[name].classList.add('active');
-  // show/hide sections
-  Object.values(els.views).forEach(v => v.classList.add('hidden'));
+
+  Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
-  // load data
-  if(name==='films') loadFilms();
-  if(name==='review') loadReview();
+
+  if(name==='intake') loadIntake();
+  if(name==='basic') loadBasic();
+  if(name==='uk') loadUk();
+  if(name==='viewing') loadViewing();
   if(name==='vote') loadVote();
-  if(name==='program') loadProgram();
+  if(name==='approved') loadApproved();
+  if(name==='discarded') loadDiscarded();
 }
 
 function routerFromHash(){
-  const h = location.hash.replace('#','') || 'films';
+  const h = location.hash.replace('#','') || 'intake';
   setView(h);
 }
 
-// --- Auth UI ---
 function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
@@ -102,168 +114,206 @@ async function ensureUserDoc(u){
   }
   const role = (await ref.get()).data().role || 'member';
   state.role = role;
-  // Hide review nav if not committee/admin
-  const canReview = ['committee','admin'].includes(role);
-  els.navButtons.review.style.display = canReview ? '' : 'none';
-  // Only admin sees Program selection tools (we still list published program to all)
 }
 
-// --- Event handlers ---
 function attachHandlers(){
-  // nav
   Object.values(els.navButtons).forEach(btn => {
-    btn.addEventListener('click', () => {
-      const v = btn.dataset.view;
-      location.hash = v;
-    });
+    if(!btn) return;
+    btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
   });
-  // signout
   els.signOut.addEventListener('click', () => auth.signOut());
-  // submit
   els.submitBtn.addEventListener('click', submitFilm);
-  // auth
   els.googleBtn.addEventListener('click', async () => {
-    try{
-      const provider = new firebase.auth.GoogleAuthProvider();
-      await auth.signInWithPopup(provider);
-    }catch(e){ alert(e.message); }
+    try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }catch(e){ alert(e.message); }
   });
   els.emailSignInBtn.addEventListener('click', async () => {
-    try{
-      await auth.signInWithEmailAndPassword(els.email.value, els.password.value);
-    }catch(e){ alert(e.message); }
+    try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
   });
   els.emailCreateBtn.addEventListener('click', async () => {
-    try{
-      await auth.createUserWithEmailAndPassword(els.email.value, els.password.value);
-    }catch(e){ alert(e.message); }
+    try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
   });
   window.addEventListener('hashchange', routerFromHash);
 }
 
-// --- Submit film ---
+// Submit: minimal intake (title only is fine)
 async function submitFilm(){
-  const title = els.title.value.trim();
+  const title = (els.title.value||'').trim();
   if(!title){ alert('Title required'); return; }
   const doc = {
     title,
     year: parseInt(els.year.value || '0', 10) || null,
-    distributor: els.distributor.value.trim(),
-    link: els.link.value.trim(),
-    synopsis: els.synopsis.value.trim(),
-    status: 'submitted', // submitted -> reviewing -> voting -> selected/archived
-    criteria: { basic_pass: !!els.basicPass.checked, screen_program_pass: false },
+    distributor: (els.distributor.value||'').trim(),
+    link: (els.link.value||'').trim(),
+    synopsis: (els.synopsis.value||'').trim(),
+    status: 'intake',
     createdBy: state.user.uid,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    // metadata defaults
+    runtimeMinutes: null,
+    language: '',
+    ageRating: '',
+    genre: '',
+    country: '',
+    hasDisk: false,
+    availability: '',
+    criteria: { basic_pass: false, screen_program_pass: false },
+    hasUkDistributor: null
   };
   try{
     await db.collection('films').add(doc);
-    els.submitMsg.textContent = 'Submitted. Thank you!';
+    els.submitMsg.textContent = 'Submitted to Intake. Thank you!';
     els.submitMsg.classList.remove('hidden');
-    els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value=''; els.basicPass.checked=false;
+    els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
     setTimeout(()=>els.submitMsg.classList.add('hidden'), 3500);
+    setView('intake');
   }catch(e){ alert(e.message); }
 }
 
-// --- Render helpers ---
-function filmStatusBadge(status){
-  const map = {
-    submitted: 'Submitted',
-    reviewing: 'Reviewing',
-    voting: 'Voting',
-    selected: 'Selected',
-    archived: 'Archived'
-  };
-  return `<span class="badge">${map[status]||status}</span>`;
-}
-
+// Rendering helpers
 function filmCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
-  const link = f.link ? `<a href="${f.link}" target="_blank" rel="noopener">link</a>` : '';
-  const by = f.createdBy || '';
-  const criteria = f.criteria || {};
-  const dist = f.distributor ? `<div><strong>Distributor:</strong> ${f.distributor}</div>` : '';
   return `<div class="card">
     <div class="item">
       <div>
-        <div class="item-title">${f.title} ${year} ${filmStatusBadge(f.status)}</div>
+        <div class="item-title">${f.title} ${year} <span class="badge">${f.status}</span></div>
         <div class="kv">
-          <div>Basic Criteria:</div><div>${criteria.basic_pass ? 'Yes' : 'No'}</div>
-          <div>Screen/Program:</div><div>${criteria.screen_program_pass ? 'Yes' : 'No'}</div>
+          <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
+          <div>Language:</div><div>${f.language || '—'}</div>
+          <div>Age Rating:</div><div>${f.ageRating || '—'}</div>
+          <div>Genre:</div><div>${f.genre || '—'}</div>
+          <div>Country:</div><div>${f.country || '—'}</div>
+          <div>UK Distributor:</div><div>${f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':'—'}</div>
+          <div>Disk available:</div><div>${f.hasDisk ? 'Yes' : 'No'}</div>
+          <div>Where to see:</div><div>${f.availability || '—'}</div>
         </div>
-        ${dist}
-        <div>${link}</div>
-        <p>${f.synopsis||''}</p>
       </div>
       <div>${actionsHtml}</div>
     </div>
   </div>`;
 }
 
-// --- Load films ---
-async function loadFilms(){
-  const q = db.collection('films').orderBy('createdAt', 'desc').limit(50);
-  const snap = await q.get();
-  els.filmList.innerHTML = '';
-  snap.forEach(doc => {
+// INTAKE (waiting for review)
+async function loadIntake(){
+  const snap = await db.collection('films').where('status','==','intake').orderBy('createdAt','desc').get();
+  els.intakeList.innerHTML = '';
+  if(snap.empty){ els.intakeList.innerHTML = '<div class="notice">No films in Intake.</div>'; return; }
+  snap.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (state.role==='admin' || state.role==='committee')
+    const actions = (['admin','committee'].includes(state.role))
       ? `<div class="actions">
-           <button class="btn btn-ghost" data-act="move-review" data-id="${f.id}">Move to Review</button>
-           <button class="btn btn-ghost" data-act="move-vote" data-id="${f.id}">Move to Voting</button>
-           <button class="btn btn-ghost" data-act="select" data-id="${f.id}">Select</button>
-           <button class="btn btn-danger" data-act="archive" data-id="${f.id}">Archive</button>
+           <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">→ Basic Criteria</button>
          </div>` : '';
-    els.filmList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    els.intakeList.insertAdjacentHTML('beforeend', filmCard(f, actions));
   });
-  els.filmList.querySelectorAll('button[data-id]').forEach(btn => {
-    btn.addEventListener('click', () => adminAction(btn.dataset.act, btn.dataset.id));
-  });
+  els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// --- Review queue ---
-async function loadReview(){
-  if(!['admin','committee'].includes(state.role)){
-    els.reviewList.innerHTML = '<div class="notice">Committee only.</div>';
-    return;
-  }
-  const q = db.collection('films').where('status','in',['submitted','reviewing']).orderBy('createdAt','desc').limit(50);
-  const snap = await q.get();
-  els.reviewList.innerHTML='';
-  snap.forEach(doc => {
+// BASIC CRITERIA list + editor
+async function loadBasic(){
+  const snap = await db.collection('films').where('status','==','review_basic').orderBy('createdAt','desc').get();
+  els.basicList.innerHTML = '';
+  if(snap.empty){ els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
+  snap.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = `<div class="actions">
-      <button class="btn btn-accent" data-act="mark-basic-yes" data-id="${f.id}">Basic ✓</button>
-      <button class="btn btn-warn" data-act="mark-basic-no" data-id="${f.id}">Basic ✗</button>
-      <button class="btn btn-accent" data-act="mark-screenprog-yes" data-id="${f.id}">Screen/Program ✓</button>
-      <button class="btn btn-warn" data-act="mark-screenprog-no" data-id="${f.id}">Screen/Program ✗</button>
-      <button class="btn btn-primary" data-act="move-vote" data-id="${f.id}">→ Voting</button>
-      <button class="btn btn-danger" data-act="archive" data-id="${f.id}">Discard + Archive</button>
-    </div>`;
-    els.reviewList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    const form = (['admin','committee'].includes(state.role)) ? `
+      <div class="actions"></div>
+      <div style="margin-top:8px">
+        <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
+        <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
+        <label>Age Rating<input type="text" data-edit="ageRating" data-id="${f.id}" value="${f.ageRating || ''}" /></label>
+        <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
+        <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
+        <label>Disk Available?
+          <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
+        </label>
+        <label>Where to see (Apple TV, Netflix, DVD, etc.)<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" /></label>
+        <div class="actions">
+          <button class="btn btn-accent" data-act="basic-save" data-id="${f.id}">Save</button>
+          <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → UK Check</button>
+          <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+        </div>
+      </div>
+    ` : '';
+    els.basicList.insertAdjacentHTML('beforeend', filmCard(f, form));
   });
-  els.reviewList.querySelectorAll('button[data-id]').forEach(btn => {
-    btn.addEventListener('click', () => adminAction(btn.dataset.act, btn.dataset.id));
+  // handlers
+  els.basicList.querySelectorAll('[data-edit]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const id = inp.dataset.id;
+      let val = inp.value;
+      const field = inp.dataset.edit;
+      if(field==='runtimeMinutes') val = parseInt(val||'0',10) || null;
+      if(field==='hasDisk') val = (val==='true');
+      await db.collection('films').doc(id).update({ [field]: val });
+    });
   });
+  els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// --- Voting ---
+// UK CHECK
+async function loadUk(){
+  const snap = await db.collection('films').where('status','==','uk_check').orderBy('createdAt','desc').get();
+  els.ukList.innerHTML = '';
+  if(snap.empty){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
+  snap.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const actions = (['admin','committee'].includes(state.role)) ? `
+      <div class="actions">
+        <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor ✓</button>
+        <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
+      </div>
+    ` : '';
+    els.ukList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+  });
+  els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+// VIEWING
+async function loadViewing(){
+  const snap = await db.collection('films').where('status','==','viewing').orderBy('createdAt','desc').get();
+  els.viewingList.innerHTML = '';
+  if(snap.empty){ els.viewingList.innerHTML = '<div class="notice">Viewing queue is empty.</div>'; return; }
+  snap.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const actions = (['admin','committee'].includes(state.role)) ? `
+      <div class="actions">
+        <button class="btn btn-primary" data-act="to-voting" data-id="${f.id}">→ Voting</button>
+        <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+      </div>
+    ` : '';
+    els.viewingList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+  });
+  els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+// VOTING
 async function loadVote(){
-  const q = db.collection('films').where('status','==','voting').orderBy('createdAt','desc').limit(50);
+  const q = db.collection('films').where('status','==','voting').orderBy('createdAt','desc');
   const snap = await q.get();
   els.voteList.innerHTML='';
+  if(snap.empty){ els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
   const my = state.user.uid;
-  for (const doc of snap.docs){
+  for(const doc of snap.docs){
     const f = { id: doc.id, ...doc.data() };
-    // Fetch my vote
+    // tally votes
+    const vs = await db.collection('films').doc(f.id).collection('votes').get();
+    let yes=0, no=0, strong=0;
+    vs.forEach(v=>{
+      const val = v.data().value;
+      if(val===2) strong+=1;
+      if(val===1 || val===2) yes+=1;  // treat strong as yes
+      if(val===-1) no+=1;
+    });
+    // my vote
     let myVoteVal = 0;
     const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
     if(vSnap.exists) myVoteVal = vSnap.data().value || 0;
     const actions = `<div class="actions" role="group" aria-label="Vote buttons">
-      <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 Not for now</button>
-      <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Interested</button>
-      <button class="btn btn-ghost" data-vote="2" data-id="${f.id}" aria-pressed="${myVoteVal===2}">⭐ Strong pick</button>
-    </div>`;
+      <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
+      <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
+      <button class="btn btn-ghost" data-vote="2" data-id="${f.id}" aria-pressed="${myVoteVal===2}">⭐ Strong Yes</button>
+    </div>
+    <div class="badge">Yes: ${yes} (⭐ ${strong})</div> <div class="badge">No: ${no}</div>`;
     els.voteList.insertAdjacentHTML('beforeend', filmCard(f, actions));
   }
   els.voteList.querySelectorAll('button[data-vote]').forEach(btn => {
@@ -276,54 +326,91 @@ async function castVote(filmId, value){
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
       value, createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }, {merge:true});
+    // after vote, check auto-thresholds (3 yes -> approved, 3 no -> discarded)
+    await checkAutoOutcome(filmId);
     loadVote();
   }catch(e){ alert(e.message); }
 }
 
-// --- Program ---
-async function loadProgram(){
-  // show selected films + quick select (committee/admin)
-  const qSel = db.collection('films').where('status','==','selected').orderBy('createdAt','desc').limit(50);
-  const snapSel = await qSel.get();
-  els.programList.innerHTML = '';
-  if(snapSel.empty) els.programList.innerHTML = '<div class="notice">No selected films yet.</div>';
-  snapSel.forEach(doc => {
-    const f = { id: doc.id, ...doc.data() };
-    const actions = (state.role==='admin' || state.role==='committee')
-      ? `<div class="actions">
-           <button class="btn btn-ghost" data-act="unselect" data-id="${f.id}">Unselect</button>
-           <button class="btn btn-danger" data-act="archive" data-id="${f.id}">Archive</button>
-         </div>` : '';
-    els.programList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+async function checkAutoOutcome(filmId){
+  const ref = db.collection('films').doc(filmId);
+  const vs = await ref.collection('votes').get();
+  let yes=0, no=0;
+  vs.forEach(v=>{
+    const val = v.data().value;
+    if(val===2 || val===1) yes+=1;
+    if(val===-1) no+=1;
   });
-  els.programList.querySelectorAll('button[data-id]').forEach(btn => {
-    btn.addEventListener('click', () => adminAction(btn.dataset.act, btn.dataset.id));
-  });
+  if(yes>=3){
+    await ref.update({ status:'approved' });
+  } else if(no>=3){
+    await ref.update({ status:'discarded' });
+  }
 }
 
-// --- Admin actions ---
+// APPROVED
+async function loadApproved(){
+  const snap = await db.collection('films').where('status','==','approved').orderBy('createdAt','desc').get();
+  els.approvedList.innerHTML = '';
+  if(snap.empty){ els.approvedList.innerHTML = '<div class="notice">No approved films yet.</div>'; return; }
+  snap.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const actions = (['admin','committee'].includes(state.role)) ? `
+      <div class="actions">
+        <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">Send back to Voting</button>
+        <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+      </div>` : '';
+    els.approvedList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+  });
+  els.approvedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+// DISCARDED (with restore)
+async function loadDiscarded(){
+  const snap = await db.collection('films').where('status','==','discarded').orderBy('createdAt','desc').get();
+  els.discardedList.innerHTML = '';
+  if(snap.empty){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
+  snap.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const actions = (['admin','committee'].includes(state.role)) ? `
+      <div class="actions">
+        <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Intake</button>
+      </div>` : '';
+    els.discardedList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+  });
+  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+// Admin actions to move statuses / set checks
 async function adminAction(action, filmId){
   if(!['admin','committee'].includes(state.role)){
-    alert('Committee only');
-    return;
+    alert('Committee only'); return;
   }
   const ref = db.collection('films').doc(filmId);
   try{
-    if(action==='archive') await ref.update({ status:'archived' });
-    if(action==='select') await ref.update({ status:'selected' });
-    if(action==='unselect') await ref.update({ status:'voting' });
-    if(action==='move-review') await ref.update({ status:'reviewing' });
-    if(action==='move-vote') await ref.update({ status:'voting' });
-    if(action==='mark-basic-yes') await ref.update({ 'criteria.basic_pass': true });
-    if(action==='mark-basic-no') await ref.update({ 'criteria.basic_pass': false });
-    if(action==='mark-screenprog-yes') await ref.update({ 'criteria.screen_program_pass': true });
-    if(action==='mark-screenprog-no') await ref.update({ 'criteria.screen_program_pass': false });
-    // reload relevant lists
-    loadFilms(); loadReview(); loadProgram();
+    if(action==='to-basic') await ref.update({ status:'review_basic' });
+    if(action==='basic-save'){ /* no-op here; fields auto-save on change */ }
+    if(action==='basic-validate'){
+      // Must be <= 150 minutes and have language captured
+      const snap = await ref.get();
+      const f = snap.data();
+      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+      const okLang = (f.language || '').trim().length > 0;
+      if(!okRuntime){ alert('Runtime must be 2h30 (150 min) or less.'); return; }
+      if(!okLang){ alert('Please capture Language.'); return; }
+      await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
+    }
+    if(action==='uk-yes') await ref.update({ hasUkDistributor:true, status:'viewing' });
+    if(action==='uk-no') await ref.update({ hasUkDistributor:false, status:'discarded' });
+    if(action==='to-voting') await ref.update({ status:'voting' });
+    if(action==='to-discard') await ref.update({ status:'discarded' });
+    if(action==='restore') await ref.update({ status:'intake' });
+    // reload current view
+    routerFromHash();
   }catch(e){ alert(e.message); }
 }
 
-// --- Boot ---
+// Boot
 function boot(){
   initFirebase();
   attachHandlers();
@@ -331,7 +418,7 @@ function boot(){
     state.user = u;
     if(!u){
       showSignedIn(false);
-      location.hash = 'films';
+      location.hash = 'intake';
       return;
     }
     await ensureUserDoc(u);
