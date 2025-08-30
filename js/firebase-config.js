@@ -5,6 +5,6 @@ window.__FLEETFILM__CONFIG = {
   storageBucket: "fleetfilm-8829e.appspot.com",
   messagingSenderId: "464150585740",
   appId: "1:464150585740:web:a047ae9b57ce149bea76a9",
-  measurementId: "G-EB6X7G79P8"
-omdbApiKey: "3e90e2e2"
+  measurementId: "G-EB6X7G79P8",
+  omdbApiKey: "3e90e2e2"
 };
