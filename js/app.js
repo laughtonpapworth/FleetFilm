@@ -176,7 +176,7 @@ function mapMpaaToUk(mpaa){
   return s;
 }
 
-/* ---------- Submit with picker ---------- */
+/* ---------- OMDb picker with manual fallback ---------- */
 function showPicker(items){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -186,7 +186,10 @@ function showPicker(items){
     modal.innerHTML = `
       <div class="modal-head">
         <h2>Select the correct film</h2>
-        <button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="ff-picker-manual" class="btn btn-ghost">Add manually</button>
+          <button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>
+        </div>
       </div>
       <div id="ff-picker-list" class="modal-list"></div>
     `;
@@ -195,7 +198,7 @@ function showPicker(items){
 
     const list = modal.querySelector('#ff-picker-list');
     if(!items || !items.length){
-      list.innerHTML = `<div class="notice">No matches found. Check the title/year and try again.</div>`;
+      list.innerHTML = `<div class="notice">No matches found. You can “Add manually”.</div>`;
     }else{
       items.forEach(it=>{
         const poster = (it.Poster && it.Poster!=='N/A') ? it.Poster : '';
@@ -215,18 +218,23 @@ function showPicker(items){
 
     modal.querySelector('#ff-picker-cancel').addEventListener('click', ()=>{
       document.body.removeChild(overlay);
-      resolve(null);
+      resolve({ mode:'cancel' });
+    });
+    modal.querySelector('#ff-picker-manual').addEventListener('click', ()=>{
+      document.body.removeChild(overlay);
+      resolve({ mode:'manual' });
     });
     list.addEventListener('click', (e)=>{
       const btn = e.target.closest('button[data-id]');
       if(!btn) return;
       const id = btn.getAttribute('data-id');
       document.body.removeChild(overlay);
-      resolve(id);
+      resolve({ mode:'pick', imdbID:id });
     });
   });
 }
 
+/* ---------- Submit (Title + Year only; manual add allowed) ---------- */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   const yearStr = (els.year.value||'').trim();
@@ -239,22 +247,29 @@ async function submitFilm(){
   try{
     const res = await omdbSearch(title, year);
     const candidates = (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
-    const imdbID = await showPicker(candidates);
-    if(!imdbID){
-      alert('Selection cancelled. Film not added.');
+    const choice = await showPicker(candidates);
+    if(choice.mode === 'cancel'){
+      // user backed out completely
       return;
+    } else if(choice.mode === 'manual'){
+      picked = null; // proceed with manual minimal record
+    } else if(choice.mode === 'pick' && choice.imdbID){
+      picked = await omdbDetailsById(choice.imdbID);
     }
-    picked = await omdbDetailsById(imdbID);
   }catch(e){
-    console.warn('OMDb lookup failed', e);
+    // On any failure, offer manual add
+    const ok = confirm('Could not reach OMDb. Add the film manually?');
+    if(!ok) return;
+    picked = null;
   }
 
+  // Minimal base; Distributor/Link/Synopsis removed from submit page
   const base = {
     title,
     year: year,
-    distributor: (els.distributor.value||'').trim(),
-    link: (els.link.value||'').trim(),
-    synopsis: (els.synopsis.value||'').trim(),
+    distributor: '',   // left blank; can be edited later if you ever need it
+    link: '',          // left blank
+    synopsis: '',      // will be editable in Basic page
     status: 'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -272,6 +287,7 @@ async function submitFilm(){
     imdbID: ''
   };
 
+  // If we did get OMDb details, populate helpful fields
   if(picked){
     let runtimeMinutes = null;
     if(picked.Runtime && /\d+/.test(picked.Runtime)){
@@ -285,7 +301,11 @@ async function submitFilm(){
     base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
     base.imdbID = picked.imdbID || '';
     if(runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
-    if(!base.synopsis && picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
+
+    // We removed synopsis from submit UI; still okay to prefill if OMDb has it
+    if(picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
+
+    // Normalise title/year if OMDb returns nicer casing or exact year
     if(picked.Title) base.title = picked.Title;
     if(picked.Year && /^\d{4}$/.test(picked.Year)) base.year = parseInt(picked.Year,10);
   }
@@ -294,7 +314,7 @@ async function submitFilm(){
     await db.collection('films').add(base);
     els.submitMsg.textContent = 'Added to Film List.';
     els.submitMsg.classList.remove('hidden');
-    els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
+    els.title.value=''; els.year.value='';
     setTimeout(()=>els.submitMsg.classList.add('hidden'), 2200);
     setView('intake');
   }catch(e){ alert(e.message); }
