@@ -68,18 +68,20 @@
 </section>
 
       <!-- SUBMIT -->
-      <section id="view-submit" class="card hidden" aria-label="Submit film">
-        <h1>Submit a Film</h1>
-        <label>Title<input id="f-title" type="text" placeholder="Film title" aria-required="true"/></label>
-        <label>Year<input id="f-year" type="number" placeholder="e.g., 2024"/></label>
-        <label>Distributor (UK)<input id="f-distributor" type="text" placeholder="e.g., Curzon, StudioCanal"/></label>
-        <label>Link (IMDB / Trailer / Website)<input id="f-link" type="url" placeholder="https://"/></label>
-        <label>Synopsis<textarea id="f-synopsis" placeholder="Short description"></textarea></label>
-        <div class="actions">
-          <button id="btn-submit-film" class="btn btn-primary big">Submit</button>
-        </div>
-        <div id="submit-msg" class="notice hidden"></div>
-      </section>
+     <section id="view-submit" class="card" aria-label="Submit film">
+  <h1>Submit</h1>
+  <label>Film Title
+    <input id="f-title" type="text" placeholder="e.g. The Godfather">
+  </label>
+  <label>Year
+    <input id="f-year" type="number" placeholder="e.g. 1972">
+  </label>
+  <div class="actions">
+    <button id="btn-submit-film" class="btn btn-primary big">Add Film</button>
+  </div>
+  <div id="submit-msg" class="notice hidden">Added.</div>
+</section>
+
 
       <!-- BASIC CRITERIA REVIEW -->
       <section id="view-basic" class="card hidden" aria-label="Basic criteria">
