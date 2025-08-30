@@ -1,10 +1,16 @@
-/* Fleet Film App (Updated workflow)
-   Status pipeline:
+/* Fleet Film App (Testing-config)
+   Pipeline (logical):
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded
-   Auto rules:
-     - Voting: at >=3 yes votes -> approved; >=3 no votes -> discarded
-   Metadata captured at Basic stage:
-     runtimeMinutes, language, ageRating, genre, country, hasDisk (bool), availability (string), hasUkDistributor (bool)
+
+   Testing changes:
+     - Voting buttons: ONLY Yes / No (no "Strong Yes").
+     - Auto-approve on FIRST Yes; auto-discard on FIRST No.
+     - When a film is added, try to fetch metadata + poster from OMDb (optional API key).
+     - "Intake" view now shows Approved Films and explains what Intake is for.
+
+   To enable metadata fetch:
+     Put omdbApiKey in window.__FLEETFILM__CONFIG in js/firebase-config.js
+     e.g. window.__FLEETFILM__CONFIG = { ..., omdbApiKey: "YOUR_OMDB_KEY" }
 */
 
 let app, auth, db;
@@ -80,7 +86,7 @@ function setView(name){
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  if(name==='intake') loadIntake();
+  if(name==='intake') loadIntake();      // (repurposed to show Approved for now)
   if(name==='basic') loadBasic();
   if(name==='uk') loadUk();
   if(name==='viewing') loadViewing();
@@ -90,7 +96,7 @@ function setView(name){
 }
 
 function routerFromHash(){
-  const h = location.hash.replace('#','') || 'intake';
+  const h = location.hash.replace('#','') || 'approved'; // land on Approved first for demo
   setView(h);
 }
 
@@ -135,7 +141,7 @@ function attachHandlers(){
   window.addEventListener('hashchange', routerFromHash);
 }
 
-// Submit: minimal intake (title only is fine)
+// Submit: minimal intake (title only is fine) + metadata fetch
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   if(!title){ alert('Title required'); return; }
@@ -157,22 +163,54 @@ async function submitFilm(){
     hasDisk: false,
     availability: '',
     criteria: { basic_pass: false, screen_program_pass: false },
-    hasUkDistributor: null
+    hasUkDistributor: null,
+    posterUrl: ''
   };
   try{
-    await db.collection('films').add(doc);
-    els.submitMsg.textContent = 'Submitted to Intake. Thank you!';
+    const ref = await db.collection('films').add(doc);
+    // Try metadata fetch (best-effort)
+    fetchAndMergeMetadata(ref, title, doc.year).catch(console.warn);
+
+    els.submitMsg.textContent = 'Submitted. Added to Intake.';
     els.submitMsg.classList.remove('hidden');
     els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
-    setTimeout(()=>els.submitMsg.classList.add('hidden'), 3500);
-    setView('intake');
+    setTimeout(()=>els.submitMsg.classList.add('hidden'), 3000);
+    setView('intake'); // now shows Approved by request, see loadIntake()
   }catch(e){ alert(e.message); }
 }
 
-// ---- Helper: fetch by status without requiring a Firestore composite index
+// ---- Metadata fetch (OMDb) ----
+async function fetchAndMergeMetadata(ref, title, year){
+  const key = (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || window.__FLEETFILM__OMDB_KEY;
+  if(!key) return;
+  const params = new URLSearchParams({ t: title, apikey: key });
+  if(year) params.set('y', String(year));
+  const url = `https://www.omdbapi.com/?${params.toString()}`;
+  const resp = await fetch(url);
+  if(!resp.ok) return;
+  const data = await resp.json();
+  if(!data || data.Response !== 'True') return;
+
+  // Parse runtime "123 min" -> 123
+  let runtimeMinutes = null;
+  if(data.Runtime && /\d+/.test(data.Runtime)){
+    runtimeMinutes = parseInt(data.Runtime.match(/\d+/)[0],10);
+  }
+  const patch = {
+    posterUrl: data.Poster && data.Poster !== 'N/A' ? data.Poster : '',
+    ageRating: data.Rated && data.Rated !== 'N/A' ? data.Rated : '',
+    genre: data.Genre && data.Genre !== 'N/A' ? data.Genre : '',
+    language: data.Language && data.Language !== 'N/A' ? data.Language : '',
+    country: data.Country && data.Country !== 'N/A' ? data.Country : '',
+  };
+  if(runtimeMinutes) patch.runtimeMinutes = runtimeMinutes;
+
+  await ref.update(patch);
+}
+
+// ---- Helper: fetch by status without needing a Firestore composite index
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
-  // sort newest first by createdAt (handles missing timestamps safely)
   const docs = snap.docs.sort((a, b) => {
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
@@ -184,19 +222,23 @@ async function fetchByStatus(status){
 // Rendering helpers
 function filmCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
+  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
   return `<div class="card">
     <div class="item">
-      <div>
-        <div class="item-title">${f.title} ${year} <span class="badge">${f.status}</span></div>
-        <div class="kv">
-          <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
-          <div>Language:</div><div>${f.language || '—'}</div>
-          <div>Age Rating:</div><div>${f.ageRating || '—'}</div>
-          <div>Genre:</div><div>${f.genre || '—'}</div>
-          <div>Country:</div><div>${f.country || '—'}</div>
-          <div>UK Distributor:</div><div>${f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':'—'}</div>
-          <div>Disk available:</div><div>${f.hasDisk ? 'Yes' : 'No'}</div>
-          <div>Where to see:</div><div>${f.availability || '—'}</div>
+      <div style="display:flex;align-items:flex-start;gap:12px;">
+        ${poster}
+        <div>
+          <div class="item-title">${f.title} ${year} <span class="badge">${f.status}</span></div>
+          <div class="kv">
+            <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
+            <div>Language:</div><div>${f.language || '—'}</div>
+            <div>Age Rating:</div><div>${f.ageRating || '—'}</div>
+            <div>Genre:</div><div>${f.genre || '—'}</div>
+            <div>Country:</div><div>${f.country || '—'}</div>
+            <div>UK Distributor:</div><div>${f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':'—'}</div>
+            <div>Disk available:</div><div>${f.hasDisk ? 'Yes' : 'No'}</div>
+            <div>Where to see:</div><div>${f.availability || '—'}</div>
+          </div>
         </div>
       </div>
       <div>${actionsHtml}</div>
@@ -204,17 +246,29 @@ function filmCard(f, actionsHtml=''){
   </div>`;
 }
 
-// INTAKE (waiting for review)
+/* ============================
+   VIEWS
+   ============================ */
+
+// INTAKE (repurposed to show Approved Films) + explanation
 async function loadIntake(){
-  const docs = await fetchByStatus('intake');
-  els.intakeList.innerHTML = '';
-  if(!docs.length){ els.intakeList.innerHTML = '<div class="notice">No films in Intake.</div>'; return; }
+  const docs = await fetchByStatus('approved');
+  els.intakeList.innerHTML = `
+    <div class="notice">
+      <strong>Approved Films.</strong> (Note: The original “Intake” list is where newly submitted titles wait
+      before basic checks. We’ve repointed this tab to Approved for your testing.)
+    </div>`;
+  if(!docs.length){
+    els.intakeList.insertAdjacentHTML('beforeend','<div class="notice">No approved films yet.</div>');
+    return;
+  }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role))
-      ? `<div class="actions">
-           <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">→ Basic Criteria</button>
-         </div>` : '';
+    const actions = (['admin','committee'].includes(state.role)) ? `
+      <div class="actions">
+        <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">Send back to Voting</button>
+        <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+      </div>` : '';
     els.intakeList.insertAdjacentHTML('beforeend', filmCard(f, actions));
   });
   els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -298,7 +352,7 @@ async function loadViewing(){
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// VOTING
+// VOTING (Yes/No only)
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -306,25 +360,24 @@ async function loadVote(){
   const my = state.user.uid;
   for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
-    // tally votes
+    // Tally votes
     const vs = await db.collection('films').doc(f.id).collection('votes').get();
-    let yes=0, no=0, strong=0;
+    let yes=0, no=0;
     vs.forEach(v=>{
       const val = v.data().value;
-      if(val===2) strong+=1;
-      if(val===1 || val===2) yes+=1;  // treat strong as yes
+      if(val===1) yes+=1;
       if(val===-1) no+=1;
     });
-    // my vote
+    // My vote
     let myVoteVal = 0;
     const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
     if(vSnap.exists) myVoteVal = vSnap.data().value || 0;
+
     const actions = `<div class="actions" role="group" aria-label="Vote buttons">
       <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
       <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
-      <button class="btn btn-ghost" data-vote="2" data-id="${f.id}" aria-pressed="${myVoteVal===2}">⭐ Strong Yes</button>
     </div>
-    <div class="badge">Yes: ${yes} (⭐ ${strong})</div> <div class="badge">No: ${no}</div>`;
+    <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>`;
     els.voteList.insertAdjacentHTML('beforeend', filmCard(f, actions));
   }
   els.voteList.querySelectorAll('button[data-vote]').forEach(btn => {
@@ -337,24 +390,24 @@ async function castVote(filmId, value){
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
       value, createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }, {merge:true});
-    // after vote, check auto-thresholds (3 yes -> approved, 3 no -> discarded)
     await checkAutoOutcome(filmId);
     loadVote();
   }catch(e){ alert(e.message); }
 }
 
+// Testing thresholds: 1 yes -> approved, 1 no -> discarded
 async function checkAutoOutcome(filmId){
   const ref = db.collection('films').doc(filmId);
   const vs = await ref.collection('votes').get();
   let yes=0, no=0;
   vs.forEach(v=>{
     const val = v.data().value;
-    if(val===2 || val===1) yes+=1;
+    if(val===1) yes+=1;
     if(val===-1) no+=1;
   });
-  if(yes>=3){
+  if(yes>=1){
     await ref.update({ status:'approved' });
-  } else if(no>=3){
+  } else if(no>=1){
     await ref.update({ status:'discarded' });
   }
 }
@@ -400,9 +453,8 @@ async function adminAction(action, filmId){
   const ref = db.collection('films').doc(filmId);
   try{
     if(action==='to-basic') await ref.update({ status:'review_basic' });
-    if(action==='basic-save'){ /* no-op here; fields auto-save on change */ }
+    if(action==='basic-save'){ /* fields auto-save on change */ }
     if(action==='basic-validate'){
-      // Must be <= 150 minutes and have language captured
       const snap = await ref.get();
       const f = snap.data();
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
@@ -416,7 +468,6 @@ async function adminAction(action, filmId){
     if(action==='to-voting') await ref.update({ status:'voting' });
     if(action==='to-discard') await ref.update({ status:'discarded' });
     if(action==='restore') await ref.update({ status:'intake' });
-    // reload current view
     routerFromHash();
   }catch(e){ alert(e.message); }
 }
@@ -429,7 +480,7 @@ function boot(){
     state.user = u;
     if(!u){
       showSignedIn(false);
-      location.hash = 'intake';
+      location.hash = 'approved'; // land on Approved
       return;
     }
     await ensureUserDoc(u);
@@ -439,4 +490,3 @@ function boot(){
 }
 
 document.addEventListener('DOMContentLoaded', boot);
-
