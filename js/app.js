@@ -5,12 +5,9 @@
    Testing changes:
      - Voting buttons: ONLY Yes / No (no "Strong Yes").
      - Auto-approve on FIRST Yes; auto-discard on FIRST No.
-     - When a film is added, try to fetch metadata + poster from OMDb (optional API key).
-     - "Intake" view now shows Approved Films and explains what Intake is for.
+     - Optional: on add, fetch metadata + poster from OMDb (set omdbApiKey in firebase-config to enable).
 
-   To enable metadata fetch:
-     Put omdbApiKey in window.__FLEETFILM__CONFIG in js/firebase-config.js
-     e.g. window.__FLEETFILM__CONFIG = { ..., omdbApiKey: "YOUR_OMDB_KEY" }
+   NOTE: Intake tab shows real Intake again (new/returned films visible there).
 */
 
 let app, auth, db;
@@ -86,7 +83,7 @@ function setView(name){
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  if(name==='intake') loadIntake();      // (repurposed to show Approved for now)
+  if(name==='intake') loadIntake();
   if(name==='basic') loadBasic();
   if(name==='uk') loadUk();
   if(name==='viewing') loadViewing();
@@ -96,7 +93,7 @@ function setView(name){
 }
 
 function routerFromHash(){
-  const h = location.hash.replace('#','') || 'approved'; // land on Approved first for demo
+  const h = location.hash.replace('#','') || 'intake'; // back to Intake by default
   setView(h);
 }
 
@@ -141,7 +138,7 @@ function attachHandlers(){
   window.addEventListener('hashchange', routerFromHash);
 }
 
-// Submit: minimal intake (title only is fine) + metadata fetch
+// Submit: minimal intake (title only is fine) + optional metadata fetch
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   if(!title){ alert('Title required'); return; }
@@ -171,11 +168,11 @@ async function submitFilm(){
     // Try metadata fetch (best-effort)
     fetchAndMergeMetadata(ref, title, doc.year).catch(console.warn);
 
-    els.submitMsg.textContent = 'Submitted. Added to Intake.';
+    els.submitMsg.textContent = 'Submitted to Intake.';
     els.submitMsg.classList.remove('hidden');
     els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
     setTimeout(()=>els.submitMsg.classList.add('hidden'), 3000);
-    setView('intake'); // now shows Approved by request, see loadIntake()
+    setView('intake'); // now shows real Intake again
   }catch(e){ alert(e.message); }
 }
 
@@ -208,7 +205,7 @@ async function fetchAndMergeMetadata(ref, title, year){
   await ref.update(patch);
 }
 
-// ---- Helper: fetch by status without needing a Firestore composite index
+// ---- Helper: fetch by status without composite index
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
   const docs = snap.docs.sort((a, b) => {
@@ -250,25 +247,24 @@ function filmCard(f, actionsHtml=''){
    VIEWS
    ============================ */
 
-// INTAKE (repurposed to show Approved Films) + explanation
+// INTAKE (real intake) + short explanation banner
 async function loadIntake(){
-  const docs = await fetchByStatus('approved');
+  const docs = await fetchByStatus('intake');
   els.intakeList.innerHTML = `
     <div class="notice">
-      <strong>Approved Films.</strong> (Note: The original “Intake” list is where newly submitted titles wait
-      before basic checks. We’ve repointed this tab to Approved for your testing.)
+      <strong>Intake:</strong> new film suggestions land here with minimal info. Committee moves items to
+      <em>Basic Criteria</em> to capture runtime, language, rating, etc.
     </div>`;
   if(!docs.length){
-    els.intakeList.insertAdjacentHTML('beforeend','<div class="notice">No approved films yet.</div>');
+    els.intakeList.insertAdjacentHTML('beforeend','<div class="notice">No films in Intake.</div>');
     return;
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role)) ? `
-      <div class="actions">
-        <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">Send back to Voting</button>
-        <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
-      </div>` : '';
+    const actions = (['admin','committee'].includes(state.role))
+      ? `<div class="actions">
+           <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">→ Basic Criteria</button>
+         </div>` : '';
     els.intakeList.insertAdjacentHTML('beforeend', filmCard(f, actions));
   });
   els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -480,7 +476,7 @@ function boot(){
     state.user = u;
     if(!u){
       showSignedIn(false);
-      location.hash = 'approved'; // land on Approved
+      location.hash = 'intake';
       return;
     }
     await ensureUserDoc(u);
