@@ -22,11 +22,14 @@
       Fleet Film
     </div>
     <div class="nav" id="nav" aria-label="Navigation" role="navigation">
-      <button id="nav-films" class="active" data-view="films" aria-label="Film list">Films</button>
+      <button id="nav-intake" class="active" data-view="intake" aria-label="Intake">Intake</button>
       <button id="nav-submit" data-view="submit" aria-label="Submit a film">Submit</button>
-      <button id="nav-review" data-view="review" aria-label="Review queue">Review</button>
+      <button id="nav-basic" data-view="basic" aria-label="Basic Criteria">Basic Criteria</button>
+      <button id="nav-uk" data-view="uk" aria-label="UK Distributor">UK Distributor</button>
+      <button id="nav-viewing" data-view="viewing" aria-label="Viewing Queue">Viewing</button>
       <button id="nav-vote" data-view="vote" aria-label="Voting">Voting</button>
-      <button id="nav-program" data-view="program" aria-label="Final program">Program</button>
+      <button id="nav-approved" data-view="approved" aria-label="Approved Films">Approved</button>
+      <button id="nav-discarded" data-view="discarded" aria-label="Discarded Films">Discarded</button>
       <button id="btn-signout" class="btn btn-ghost" aria-label="Sign out">Sign out</button>
     </div>
   </header>
@@ -57,10 +60,10 @@
     </div>
 
     <div id="signed-in" class="hidden">
-      <!-- FILM LIST -->
-      <section id="view-films" class="card" aria-label="Film list">
-        <h1>Films</h1>
-        <div class="list" id="film-list"></div>
+      <!-- INTAKE LIST (just names, waiting for review) -->
+      <section id="view-intake" class="card" aria-label="Intake list">
+        <h1>Intake</h1>
+        <div class="list" id="intake-list"></div>
       </section>
 
       <!-- SUBMIT -->
@@ -71,29 +74,46 @@
         <label>Distributor (UK)<input id="f-distributor" type="text" placeholder="e.g., Curzon, StudioCanal"/></label>
         <label>Link (IMDB / Trailer / Website)<input id="f-link" type="url" placeholder="https://"/></label>
         <label>Synopsis<textarea id="f-synopsis" placeholder="Short description"></textarea></label>
-        <div class="large-label"><input id="f-basic-pass" type="checkbox"/> Meets basic Fleet Film criteria</div>
         <div class="actions">
           <button id="btn-submit-film" class="btn btn-primary big">Submit</button>
         </div>
         <div id="submit-msg" class="notice hidden"></div>
       </section>
 
-      <!-- REVIEW (Committee/Admin) -->
-      <section id="view-review" class="card hidden" aria-label="Review queue">
-        <h1>Review Queue</h1>
-        <div class="list" id="review-list"></div>
+      <!-- BASIC CRITERIA REVIEW -->
+      <section id="view-basic" class="card hidden" aria-label="Basic criteria">
+        <h1>Basic Criteria</h1>
+        <div class="list" id="basic-list"></div>
+      </section>
+
+      <!-- UK DISTRIBUTOR QUEUE -->
+      <section id="view-uk" class="card hidden" aria-label="UK Distributor check">
+        <h1>UK Distributor</h1>
+        <div class="list" id="uk-list"></div>
+      </section>
+
+      <!-- VIEWING QUEUE -->
+      <section id="view-viewing" class="card hidden" aria-label="Viewing queue">
+        <h1>Viewing Queue</h1>
+        <div class="list" id="viewing-list"></div>
       </section>
 
       <!-- VOTING -->
       <section id="view-vote" class="card hidden" aria-label="Voting">
-        <h1>Viewing + Voting</h1>
+        <h1>Voting</h1>
         <div class="list" id="vote-list"></div>
       </section>
 
-      <!-- PROGRAM -->
-      <section id="view-program" class="card hidden" aria-label="Final program">
-        <h1>Final Program</h1>
-        <div class="list" id="program-list"></div>
+      <!-- APPROVED -->
+      <section id="view-approved" class="card hidden" aria-label="Approved films">
+        <h1>Approved Films</h1>
+        <div class="list" id="approved-list"></div>
+      </section>
+
+      <!-- DISCARDED -->
+      <section id="view-discarded" class="card hidden" aria-label="Discarded films">
+        <h1>Discarded</h1>
+        <div class="list" id="discarded-list"></div>
       </section>
     </div>
   </main>
