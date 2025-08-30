@@ -169,6 +169,18 @@ async function submitFilm(){
   }catch(e){ alert(e.message); }
 }
 
+// ---- Helper: fetch by status without requiring a Firestore composite index
+async function fetchByStatus(status){
+  const snap = await db.collection('films').where('status','==', status).get();
+  // sort newest first by createdAt (handles missing timestamps safely)
+  const docs = snap.docs.sort((a, b) => {
+    const ta = a.data().createdAt?.toMillis?.() || 0;
+    const tb = b.data().createdAt?.toMillis?.() || 0;
+    return tb - ta;
+  });
+  return docs;
+}
+
 // Rendering helpers
 function filmCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
@@ -194,10 +206,10 @@ function filmCard(f, actionsHtml=''){
 
 // INTAKE (waiting for review)
 async function loadIntake(){
-  const snap = await db.collection('films').where('status','==','intake').orderBy('createdAt','desc').get();
+  const docs = await fetchByStatus('intake');
   els.intakeList.innerHTML = '';
-  if(snap.empty){ els.intakeList.innerHTML = '<div class="notice">No films in Intake.</div>'; return; }
-  snap.forEach(doc=>{
+  if(!docs.length){ els.intakeList.innerHTML = '<div class="notice">No films in Intake.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role))
       ? `<div class="actions">
@@ -210,10 +222,10 @@ async function loadIntake(){
 
 // BASIC CRITERIA list + editor
 async function loadBasic(){
-  const snap = await db.collection('films').where('status','==','review_basic').orderBy('createdAt','desc').get();
+  const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
-  if(snap.empty){ els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
-  snap.forEach(doc=>{
+  if(!docs.length){ els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const form = (['admin','committee'].includes(state.role)) ? `
       <div class="actions"></div>
@@ -252,10 +264,10 @@ async function loadBasic(){
 
 // UK CHECK
 async function loadUk(){
-  const snap = await db.collection('films').where('status','==','uk_check').orderBy('createdAt','desc').get();
+  const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
-  if(snap.empty){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
-  snap.forEach(doc=>{
+  if(!docs.length){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role)) ? `
       <div class="actions">
@@ -270,10 +282,10 @@ async function loadUk(){
 
 // VIEWING
 async function loadViewing(){
-  const snap = await db.collection('films').where('status','==','viewing').orderBy('createdAt','desc').get();
+  const docs = await fetchByStatus('viewing');
   els.viewingList.innerHTML = '';
-  if(snap.empty){ els.viewingList.innerHTML = '<div class="notice">Viewing queue is empty.</div>'; return; }
-  snap.forEach(doc=>{
+  if(!docs.length){ els.viewingList.innerHTML = '<div class="notice">Viewing queue is empty.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role)) ? `
       <div class="actions">
@@ -288,12 +300,11 @@ async function loadViewing(){
 
 // VOTING
 async function loadVote(){
-  const q = db.collection('films').where('status','==','voting').orderBy('createdAt','desc');
-  const snap = await q.get();
+  const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
-  if(snap.empty){ els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
+  if(!docs.length){ els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
   const my = state.user.uid;
-  for(const doc of snap.docs){
+  for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
     // tally votes
     const vs = await db.collection('films').doc(f.id).collection('votes').get();
@@ -350,10 +361,10 @@ async function checkAutoOutcome(filmId){
 
 // APPROVED
 async function loadApproved(){
-  const snap = await db.collection('films').where('status','==','approved').orderBy('createdAt','desc').get();
+  const docs = await fetchByStatus('approved');
   els.approvedList.innerHTML = '';
-  if(snap.empty){ els.approvedList.innerHTML = '<div class="notice">No approved films yet.</div>'; return; }
-  snap.forEach(doc=>{
+  if(!docs.length){ els.approvedList.innerHTML = '<div class="notice">No approved films yet.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role)) ? `
       <div class="actions">
@@ -367,10 +378,10 @@ async function loadApproved(){
 
 // DISCARDED (with restore)
 async function loadDiscarded(){
-  const snap = await db.collection('films').where('status','==','discarded').orderBy('createdAt','desc').get();
+  const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
-  if(snap.empty){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
-  snap.forEach(doc=>{
+  if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role)) ? `
       <div class="actions">
@@ -428,3 +439,4 @@ function boot(){
 }
 
 document.addEventListener('DOMContentLoaded', boot);
+
