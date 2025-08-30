@@ -1,14 +1,13 @@
-/* Fleet Film App (Archive + mobile-first + Film List navigates)
+/* Fleet Film App (Film List = single Next button; clean nav; archive/export intact)
    Pipeline:
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded -> archived
 
-   Key points:
-     - Archive page + Archive buttons on Approved/Discarded.
-     - Film List shows EVERYTHING not in approved/discarded/archived, and the little status label
-       now just NAVIGATES to the right page. It does NOT change status from Film List.
-     - UK rating stored as ukAgeRating (auto-mapped from OMDb MPAA, editable in Basic).
-     - Export CSV column "UK Distributor?" (Yes/No).
-     - Voting buttons: Yes then No.
+   Film List rules (single Next button):
+     intake        -> "Move to Basic Criteria"         (status -> review_basic)
+     review_basic  -> "Validate & Move to UK Check"    (validates runtime<=150 & language; else jumps to Basic page)
+     uk_check      -> "Open UK Distributor Check"      (navigate to UK page; decision is there)
+     viewing       -> "Move to Voting"                 (status -> voting)
+     voting        -> no Next button                   (vote on Voting page)
 */
 
 let app, auth, db;
@@ -39,7 +38,7 @@ const els = {
     discarded: document.getElementById('view-discarded'),
     archive: document.getElementById('view-archive'),
   },
-  // nav buttons
+  // nav buttons (ensure your HTML has these, in this order)
   navButtons: {
     submit: document.getElementById('nav-submit'),
     intake: document.getElementById('nav-intake'),
@@ -184,7 +183,7 @@ function mapMpaaToUk(mpaa){
   return s;
 }
 
-/* ---------- Submit (Title+Year required + picker) ---------- */
+/* ---------- Submit (Title+Year + picker) ---------- */
 function showPicker(items){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -262,7 +261,7 @@ async function submitFilm(){
     year: year,
     distributor: (els.distributor.value||'').trim(),
     link: (els.link.value||'').trim(),
-    synopsis: (els.synopsis.value||'').trim(), // editable
+    synopsis: (els.synopsis.value||'').trim(),
     status: 'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -330,42 +329,17 @@ async function fetchNotInStatuses(statuses){
 }
 
 /* ---------- Rendering helpers ---------- */
-function statusLabel(status){
-  switch(status){
-    case 'intake': return 'Submitted';
-    case 'review_basic': return 'Basic Criteria';
-    case 'uk_check': return 'UK Distributor';
-    case 'viewing': return 'Viewing';
-    case 'voting': return 'Voting';
-    case 'approved': return 'Approved';
-    case 'discarded': return 'Discarded';
-    case 'archived': return 'Archived';
-    default: return status || '';
-  }
-}
-function statusToView(status){
-  if(status==='review_basic') return 'basic';
-  if(status==='uk_check') return 'uk';
-  if(status==='viewing') return 'viewing';
-  if(status==='voting') return 'vote';
-  if(status==='intake') return 'intake';
-  return '';
-}
 
-function cardMarkup({f, rightHtml='', tinyStatus=false}){
+function filmListCard(f, nextHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  const tiny = tinyStatus ? `<button class="chip chip-link" data-goto="${statusToView(f.status)}">${statusLabel(f.status)}</button>` : '';
   return `<div class="card">
     <div class="item">
       <div class="item-left">
         ${poster}
-        <div class="title-line">
-          <div class="item-title">${f.title} ${year}</div>
-          ${tiny}
-        </div>
+        <div class="item-title">${f.title} ${year}</div>
       </div>
-      <div class="item-right">${rightHtml}</div>
+      <div class="item-right">${nextHtml}</div>
     </div>
   </div>`;
 }
@@ -396,11 +370,37 @@ function detailCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* ============================
-   VIEWS
-   ============================ */
+/* ---------- Film List (single Next action) ---------- */
 
-// FILM LIST: show everything NOT in approved/discarded/archived; tiny status label navigates
+function nextActionFor(f){
+  // Returns {label, type, handler} where type is 'update' (status change) or 'nav' (navigate)
+  switch(f.status){
+    case 'intake':
+      return { label: 'Move to Basic Criteria', type: 'update', handler: async (ref)=>{ await ref.update({ status:'review_basic' }); } };
+    case 'review_basic':
+      return { label: 'Validate & Move to UK Check', type: 'update', handler: async (ref)=>{
+        const snap = await ref.get();
+        const x = snap.data();
+        const okRuntime = (x.runtimeMinutes != null) && (x.runtimeMinutes <= 150);
+        const okLang = (x.language || '').trim().length > 0;
+        if(!okRuntime || !okLang){
+          alert('Fill in Basic: runtime ≤ 150 and language required.');
+          location.hash = 'basic';
+          return;
+        }
+        await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
+      }};
+    case 'uk_check':
+      return { label: 'Open UK Distributor Check', type: 'nav', handler: ()=>{ location.hash = 'uk'; } };
+    case 'viewing':
+      return { label: 'Move to Voting', type: 'update', handler: async (ref)=>{ await ref.update({ status:'voting' }); } };
+    case 'voting':
+      return null; // no next; vote on Voting page
+    default:
+      return null;
+  }
+}
+
 async function loadFilmList(){
   const docs = await fetchNotInStatuses(['approved','discarded','archived']);
   els.filmList.innerHTML = '';
@@ -410,20 +410,29 @@ async function loadFilmList(){
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    // No status-changing buttons here. Only navigation chips.
-    const right = ''; // keep clean
-    els.filmList.insertAdjacentHTML('beforeend', cardMarkup({f, rightHtml:right, tinyStatus:true}));
+    const act = nextActionFor(f);
+    const right = act ? `<button class="btn btn-primary" data-next="${f.id}">${act.label}</button>` : '';
+    els.filmList.insertAdjacentHTML('beforeend', filmListCard(f, right));
   });
-  // navigation from tiny chip
-  els.filmList.querySelectorAll('.chip-link[data-goto]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const v = el.getAttribute('data-goto');
-      if(v) location.hash = v;
+  els.filmList.querySelectorAll('button[data-next]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.getAttribute('data-next');
+      const ref = db.collection('films').doc(id);
+      const snap = await ref.get();
+      if(!snap.exists) return;
+      const f = snap.data();
+      const act = nextActionFor(f);
+      if(!act) return;
+      try{
+        if(act.type==='update'){ await act.handler(ref); }
+        if(act.type==='nav'){ act.handler(); }
+        routerFromHash();
+      }catch(e){ alert(e.message); }
     });
   });
 }
 
-// BASIC
+/* ---------- BASIC ---------- */
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
@@ -464,7 +473,7 @@ async function loadBasic(){
   els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// UK CHECK
+/* ---------- UK CHECK ---------- */
 async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
@@ -482,7 +491,7 @@ async function loadUk(){
   els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// VIEWING
+/* ---------- VIEWING ---------- */
 async function loadViewing(){
   const docs = await fetchByStatus('viewing');
   els.viewingList.innerHTML = '';
@@ -500,7 +509,7 @@ async function loadViewing(){
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// VOTING (Yes first)
+/* ---------- VOTING (Yes before No) ---------- */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -536,12 +545,12 @@ async function castVote(filmId, value){
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
       value, createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }, {merge:true});
+    // TESTING RULE: 1 yes -> approved, 1 no -> discarded
     await checkAutoOutcome(filmId);
     loadVote();
   }catch(e){ alert(e.message); }
 }
 
-// 1 yes -> approved, 1 no -> discarded (testing)
 async function checkAutoOutcome(filmId){
   const ref = db.collection('films').doc(filmId);
   const vs = await ref.collection('votes').get();
@@ -558,7 +567,7 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-// APPROVED (+ Archive + Export CSV)
+/* ---------- APPROVED (Export + Archive) ---------- */
 async function loadApproved(){
   const docs = await fetchByStatus('approved');
   els.approvedList.innerHTML = `
@@ -605,7 +614,7 @@ async function exportApprovedCSV(){
     const line = [
       f.title || '',
       f.year || '',
-      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // fixed
+      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // requested Yes/No
       f.link || '',
       f.synopsis || '',
       f.runtimeMinutes ?? '',
@@ -632,7 +641,7 @@ async function exportApprovedCSV(){
   URL.revokeObjectURL(url);
 }
 
-// DISCARDED (+ Archive)
+/* ---------- DISCARDED (Restore + Archive) ---------- */
 async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
@@ -649,7 +658,7 @@ async function loadDiscarded(){
   els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// ARCHIVE page
+/* ---------- ARCHIVE ---------- */
 async function loadArchive(){
   const docs = await fetchByStatus('archived');
   els.archiveList.innerHTML = '';
@@ -658,7 +667,8 @@ async function loadArchive(){
     const f = { id: doc.id, ...doc.data() };
     const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
     const right = origin ? `<span class="badge">${origin}</span>` : '';
-    els.archiveList.insertAdjacentHTML('beforeend', cardMarkup({f, rightHtml:right}));
+    // Reuse compact Film List card but without Next button
+    els.archiveList.insertAdjacentHTML('beforeend', filmListCard(f, right));
   });
 }
 
