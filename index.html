@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1f2937"/>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" />
+  <title>Fleet Film</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <!-- Firebase (compat for simplicity) -->
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script defer src="js/firebase-config.js"></script>
+  <script defer src="js/app.js"></script>
+</head>
+<body>
+  <header class="header" aria-label="Application header">
+    <div class="brand" aria-label="Brand">
+      <div class="logo" aria-hidden="true">FF</div>
+      Fleet Film
+    </div>
+    <div class="nav" id="nav" aria-label="Navigation" role="navigation">
+      <button id="nav-films" class="active" data-view="films" aria-label="Film list">Films</button>
+      <button id="nav-submit" data-view="submit" aria-label="Submit a film">Submit</button>
+      <button id="nav-review" data-view="review" aria-label="Review queue">Review</button>
+      <button id="nav-vote" data-view="vote" aria-label="Voting">Voting</button>
+      <button id="nav-program" data-view="program" aria-label="Final program">Program</button>
+      <button id="btn-signout" class="btn btn-ghost" aria-label="Sign out">Sign out</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="signed-out" class="center">
+      <div class="card signin-card" role="region" aria-label="Sign in">
+        <h1>Welcome to Fleet Film</h1>
+        <p style="font-size:18px; line-height:1.4;">
+          Secure sign-in required. This site works on phones and can be installed like an app.
+        </p>
+        <div class="actions">
+          <button id="btn-google" class="btn btn-primary big" aria-label="Sign in with Google">Sign in with Google</button>
+        </div>
+        <div class="hr"></div>
+        <label for="email" class="large-label">Email</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="username" />
+        <label for="password" class="large-label">Password</label>
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+        <div class="actions">
+          <button id="btn-email-signin" class="btn btn-accent big" aria-label="Sign in with email">Sign in</button>
+          <button id="btn-email-create" class="btn btn-ghost big" aria-label="Create account">Create account</button>
+        </div>
+        <div class="notice" role="status">
+          Need help? Ask an admin to invite you. Big buttons, simple screens, large text.
+        </div>
+      </div>
+    </div>
+
+    <div id="signed-in" class="hidden">
+      <!-- FILM LIST -->
+      <section id="view-films" class="card" aria-label="Film list">
+        <h1>Films</h1>
+        <div class="list" id="film-list"></div>
+      </section>
+
+      <!-- SUBMIT -->
+      <section id="view-submit" class="card hidden" aria-label="Submit film">
+        <h1>Submit a Film</h1>
+        <label>Title<input id="f-title" type="text" placeholder="Film title" aria-required="true"/></label>
+        <label>Year<input id="f-year" type="number" placeholder="e.g., 2024"/></label>
+        <label>Distributor (UK)<input id="f-distributor" type="text" placeholder="e.g., Curzon, StudioCanal"/></label>
+        <label>Link (IMDB / Trailer / Website)<input id="f-link" type="url" placeholder="https://"/></label>
+        <label>Synopsis<textarea id="f-synopsis" placeholder="Short description"></textarea></label>
+        <div class="large-label"><input id="f-basic-pass" type="checkbox"/> Meets basic Fleet Film criteria</div>
+        <div class="actions">
+          <button id="btn-submit-film" class="btn btn-primary big">Submit</button>
+        </div>
+        <div id="submit-msg" class="notice hidden"></div>
+      </section>
+
+      <!-- REVIEW (Committee/Admin) -->
+      <section id="view-review" class="card hidden" aria-label="Review queue">
+        <h1>Review Queue</h1>
+        <div class="list" id="review-list"></div>
+      </section>
+
+      <!-- VOTING -->
+      <section id="view-vote" class="card hidden" aria-label="Voting">
+        <h1>Viewing + Voting</h1>
+        <div class="list" id="vote-list"></div>
+      </section>
+
+      <!-- PROGRAM -->
+      <section id="view-program" class="card hidden" aria-label="Final program">
+        <h1>Final Program</h1>
+        <div class="list" id="program-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    Tip: On your phone, use “Add to Home Screen” to install.
+  </footer>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(console.error);
+      });
+    }
+  </script>
+</body>
+</html>
