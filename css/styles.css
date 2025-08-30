@@ -25,7 +25,6 @@ html,body{
 .brand{display:flex; gap:10px; align-items:center; font-weight:700; font-size:22px;}
 .brand .logo{width:28px; height:28px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px;}
 
-/* Desktop nav defaults */
 .nav{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .nav button{
   font-size:18px; padding:10px 14px; border:1px solid #e5e7eb; border-radius:12px;
@@ -134,59 +133,49 @@ footer{
 /* ---------------- Mobile (<=768px) ---------------- */
 @media (max-width: 768px){
 
-  /* Stack header; make nav horizontally scrollable */
-  .header{
-    padding:8px;
-    flex-direction:column;
-    align-items:stretch;
-    gap:8px;
-  }
-  .brand{ font-size:20px; }
+  /* Force the header to stack and nav to scroll horizontally */
+  .header{ padding:8px !important; flex-direction:column !important; align-items:stretch !important; gap:8px !important; }
+  .brand{ font-size:20px !important; }
 
   .nav{
-    flex-wrap:nowrap;
-    overflow-x:auto; overflow-y:hidden;
+    flex-wrap:nowrap !important;
+    overflow-x:auto !important; overflow-y:hidden !important;
     -webkit-overflow-scrolling:touch;
     scrollbar-width:none;
-    gap:6px;
+    gap:6px !important;
   }
   .nav::-webkit-scrollbar{ display:none; }
-  .nav button{
-    font-size:16px; padding:8px 12px;
-    flex:0 0 auto;
-  }
+  .nav button{ font-size:16px !important; padding:8px 12px !important; flex:0 0 auto !important; }
 
-  .container{ padding:0 10px 88px; }
+  .container{ padding:0 10px 88px !important; }
 
-  /* Cards: stack content */
+  /* FORCE cards to stack content (kills any old grid) */
   .item{
-    grid-template-columns: 1fr;
-    align-items:stretch;
+    display:block !important;
   }
-  .item-left{ align-items:center; }
-  .item-right{ justify-content:flex-start; }
+  .item-left{ display:flex !important; align-items:center !important; gap:10px !important; margin-bottom:8px !important; }
+  .item-right{ display:flex !important; justify-content:flex-start !important; gap:8px !important; flex-wrap:wrap !important; }
 
-  /* Posters smaller; keep aspect */
-  .poster{ width:72px; margin-right:8px; }
-  .poster-small{ width:54px; height:80px; }
+  /* Posters smaller */
+  .poster{ width:72px !important; height:auto !important; margin-right:8px !important; }
+  .poster-small{ width:54px !important; height:80px !important; }
 
-  /* Details grid tighter */
-  .kv{ grid-template-columns: 120px 1fr; font-size:16px; }
+  /* Tighter details */
+  .kv{ grid-template-columns: 120px 1fr !important; font-size:16px !important; }
 
   /* Forms collapse to single column */
-  .form-grid{ grid-template-columns: 1fr; }
-  .form-grid .span-2{ grid-column: span 1; }
+  .form-grid{ grid-template-columns: 1fr !important; }
+  .form-grid .span-2{ grid-column: span 1 !important; }
 
-  /* Typo + button sizing */
-  h1{ font-size:22px; }
-  h2{ font-size:18px; }
-  h3{ font-size:16px; }
-  .btn{ font-size:16px; padding:10px 14px; }
-  .big{ font-size:18px; padding:12px 16px; }
+  /* Typography + buttons smaller to avoid wrapping hell */
+  h1{ font-size:22px !important; }
+  h2{ font-size:18px !important; }
+  h3{ font-size:16px !important; }
+  .btn{ font-size:16px !important; padding:10px 14px !important; }
+  .big{ font-size:18px !important; padding:12px 16px !important; }
 }
 
 /* ---------------- Desktop (>=769px) ---------------- */
-/* Defaults above preserve the existing desktop layout */
 @media (min-width: 769px){
-  /* No extra rules required */
+  /* Desktop stays as-is */
 }
