@@ -1,17 +1,14 @@
-/* Fleet Film App (Testing-config + UX updates)
+/* Fleet Film App (Testing-config + OMDb picker + legacy fix)
    Pipeline:
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded
 
-   Changes per request:
-     - Voting: Yes / No only; auto-approve on first Yes; auto-discard on first No (testing).
-     - On add: fetch poster, runtime, rating, genre, language, country, synopsis from OMDb (if omdbApiKey present).
-       Synopsis remains editable.
-     - "Intake" view used as Film List: only title + poster + "Basic Criteria" button.
-     - Default/start view = Submit (and you’ll move the Submit tab to the left in HTML).
-     - Approved view has "Export CSV" for all collected fields.
-
-   To enable metadata fetch:
-     window.__FLEETFILM__CONFIG = { ..., omdbApiKey: "YOUR_OMDB_KEY" }
+   Changes:
+     - Voting: Yes/No only; auto-approve on first Yes; auto-discard on first No (testing).
+     - Submit requires Title + Year, opens OMDb search picker, then creates film from the selected match.
+     - Synopsis auto-filled ONLY if left blank; always editable later.
+     - Film List (intake) shows title + poster + Basic button.
+     - Approved includes Export CSV.
+     - Admin-only "Fix Legacy Films" button on Film List to repair old docs (missing/odd status -> intake).
 */
 
 let app, auth, db;
@@ -142,20 +139,127 @@ function attachHandlers(){
   window.addEventListener('hashchange', routerFromHash);
 }
 
-/* ---------- Add film (with optional metadata fetch) ---------- */
+/* ---------------- OMDb helpers (search + details + picker) ---------------- */
+
+function getOmdbKey(){
+  return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
+}
+
+async function omdbSearch(title, year){
+  const key = getOmdbKey();
+  if(!key) return { Search: [] };
+  const params = new URLSearchParams({ apikey: key, s: title, type: 'movie' });
+  if(year) params.set('y', String(year));
+  const url = `https://www.omdbapi.com/?${params.toString()}`;
+  const r = await fetch(url);
+  if(!r.ok) return { Search: [] };
+  const data = await r.json();
+  return data || { Search: [] };
+}
+
+async function omdbDetailsById(imdbID){
+  const key = getOmdbKey();
+  if(!key) return null;
+  const params = new URLSearchParams({ apikey: key, i: imdbID, plot: 'short' });
+  const url = `https://www.omdbapi.com/?${params.toString()}`;
+  const r = await fetch(url);
+  if(!r.ok) return null;
+  const data = await r.json();
+  return (data && data.Response === 'True') ? data : null;
+}
+
+function showPicker(items){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:9999;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    `;
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background:#fff; max-width:800px; width:100%; max-height:80vh; overflow:auto;
+      border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.3);
+      font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    `;
+    modal.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2 style="margin:0;font-size:18px;">Select the correct film</h2>
+        <button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>
+      </div>
+      <div id="ff-picker-list" style="display:grid; grid-template-columns:1fr; gap:8px;"></div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const list = modal.querySelector('#ff-picker-list');
+    if(!items || !items.length){
+      list.innerHTML = `<div class="notice">No matches found. Check the title/year and try again.</div>`;
+    }else{
+      items.forEach(it=>{
+        const poster = (it.Poster && it.Poster!=='N/A') ? it.Poster : '';
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex; align-items:center; gap:12px; border:1px solid #eee; border-radius:10px; padding:8px;`;
+        row.innerHTML = `
+          ${poster ? `<img src="${poster}" alt="poster" style="width:60px;height:88px;object-fit:cover;border-radius:6px;">` : ''}
+          <div style="flex:1;">
+            <div style="font-weight:600;">${it.Title} (${it.Year})</div>
+            <div style="font-size:12px;opacity:.7;">${it.Type || 'movie'} • ${it.imdbID}</div>
+          </div>
+          <button data-id="${it.imdbID}" class="btn btn-primary">Select</button>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    modal.querySelector('#ff-picker-cancel').addEventListener('click', ()=>{
+      document.body.removeChild(overlay);
+      resolve(null);
+    });
+    list.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-id]');
+      if(!btn) return;
+      const id = btn.getAttribute('data-id');
+      document.body.removeChild(overlay);
+      resolve(id);
+    });
+  });
+}
+
+/* ---------------- Submit (Title+Year required, OMDb picker) ---------------- */
+
 async function submitFilm(){
   const title = (els.title.value||'').trim();
+  const yearStr = (els.year.value||'').trim();
+  const year = parseInt(yearStr, 10);
+
   if(!title){ alert('Title required'); return; }
-  const doc = {
+  if(!year || yearStr.length !== 4){ alert('Enter a 4-digit Year (e.g. 1994)'); return; }
+
+  // search candidates
+  let picked = null;
+  try{
+    const res = await omdbSearch(title, year);
+    const candidates = (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
+    const imdbID = await showPicker(candidates);
+    if(!imdbID){
+      alert('Selection cancelled. Film not added.');
+      return;
+    }
+    picked = await omdbDetailsById(imdbID);
+  }catch(e){
+    console.warn('OMDb lookup failed', e);
+  }
+
+  // Prepare base doc
+  const base = {
     title,
-    year: parseInt(els.year.value || '0', 10) || null,
+    year: year,
     distributor: (els.distributor.value||'').trim(),
     link: (els.link.value||'').trim(),
-    synopsis: (els.synopsis.value||'').trim(), // editable; we’ll overwrite only if empty
+    synopsis: (els.synopsis.value||'').trim(), // editable; may be overwritten below if blank
     status: 'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    // metadata defaults
     runtimeMinutes: null,
     language: '',
     ageRating: '',
@@ -165,14 +269,33 @@ async function submitFilm(){
     availability: '',
     criteria: { basic_pass: false, screen_program_pass: false },
     hasUkDistributor: null,
-    posterUrl: ''
+    posterUrl: '',
+    imdbID: ''
   };
-  try{
-    const ref = await db.collection('films').add(doc);
-    // Try metadata fetch (best-effort)
-    fetchAndMergeMetadata(ref, title, doc.year, doc.synopsis).catch(console.warn);
 
-    els.submitMsg.textContent = 'Submitted to Film List.';
+  // Merge selected metadata
+  if(picked){
+    // runtime "123 min" -> 123
+    let runtimeMinutes = null;
+    if(picked.Runtime && /\d+/.test(picked.Runtime)){
+      runtimeMinutes = parseInt(picked.Runtime.match(/\d+/)[0],10);
+    }
+    base.posterUrl = (picked.Poster && picked.Poster!=='N/A') ? picked.Poster : '';
+    base.ageRating = picked.Rated && picked.Rated!=='N/A' ? picked.Rated : '';
+    base.genre = picked.Genre && picked.Genre!=='N/A' ? picked.Genre : '';
+    base.language = picked.Language && picked.Language!=='N/A' ? picked.Language : '';
+    base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
+    base.imdbID = picked.imdbID || '';
+    if(runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
+    if(!base.synopsis && picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
+    // prefer OMDb canonical Title/Year if present
+    if(picked.Title) base.title = picked.Title;
+    if(picked.Year && /^\d{4}$/.test(picked.Year)) base.year = parseInt(picked.Year,10);
+  }
+
+  try{
+    await db.collection('films').add(base);
+    els.submitMsg.textContent = 'Added to Film List.';
     els.submitMsg.classList.remove('hidden');
     els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
     setTimeout(()=>els.submitMsg.classList.add('hidden'), 2500);
@@ -180,41 +303,8 @@ async function submitFilm(){
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Metadata fetch (OMDb) ---------- */
-async function fetchAndMergeMetadata(ref, title, year, currentSynopsis){
-  const key = (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || window.__FLEETFILM__OMDB_KEY;
-  if(!key){ console.info('No OMDb key configured; skipping metadata fetch'); return; }
-  const params = new URLSearchParams({ t: title, apikey: key });
-  if(year) params.set('y', String(year));
-  const url = `https://www.omdbapi.com/?${params.toString()}`;
-  const resp = await fetch(url);
-  if(!resp.ok) return;
-  const data = await resp.json();
-  if(!data || data.Response !== 'True') return;
+/* ---------------- Helper: fetch by status (no composite index needed) ---------------- */
 
-  // Parse runtime "123 min" -> 123
-  let runtimeMinutes = null;
-  if(data.Runtime && /\d+/.test(data.Runtime)){
-    runtimeMinutes = parseInt(data.Runtime.match(/\d+/)[0],10);
-  }
-  const patch = {
-    posterUrl: data.Poster && data.Poster !== 'N/A' ? data.Poster : '',
-    ageRating: data.Rated && data.Rated !== 'N/A' ? data.Rated : '',
-    genre: data.Genre && data.Genre !== 'N/A' ? data.Genre : '',
-    language: data.Language && data.Language !== 'N/A' ? data.Language : '',
-    country: data.Country && data.Country !== 'N/A' ? data.Country : '',
-  };
-  if(runtimeMinutes) patch.runtimeMinutes = runtimeMinutes;
-
-  // Only set synopsis if user left it blank on submit (keep it editable later)
-  if(!currentSynopsis && data.Plot && data.Plot !== 'N/A'){
-    patch.synopsis = data.Plot;
-  }
-
-  await ref.update(patch);
-}
-
-/* ---------- Helper: fetch by status (no composite index needed) ---------- */
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
   const docs = snap.docs.sort((a, b) => {
@@ -225,7 +315,8 @@ async function fetchByStatus(status){
   return docs;
 }
 
-/* ---------- Rendering helpers ---------- */
+/* ---------------- Rendering helpers ---------------- */
+
 function filmCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
@@ -252,7 +343,6 @@ function filmCard(f, actionsHtml=''){
   </div>`;
 }
 
-// Minimal card for Film List (title + poster + Basic Criteria button)
 function filmListCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
@@ -267,30 +357,37 @@ function filmListCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* ============================
-   VIEWS
-   ============================ */
+/* ---------------- VIEWS ---------------- */
 
-// FILM LIST (formerly Intake): only title, poster, Basic Criteria button
+// FILM LIST (formerly Intake): title, poster, Basic button + admin "Fix Legacy Films"
 async function loadIntake(){
   const docs = await fetchByStatus('intake');
-  els.intakeList.innerHTML = ''; // no banner; keep it clean per spec
+  const isCommittee = ['admin','committee'].includes(state.role);
+  els.intakeList.innerHTML = isCommittee
+    ? `<div class="actions" style="margin-bottom:12px;">
+         <button class="btn btn-ghost" id="btn-fix-legacy">Fix Legacy Films</button>
+       </div>`
+    : '';
   if(!docs.length){
-    els.intakeList.innerHTML = '<div class="notice">No films yet. Use Submit to add one.</div>';
-    return;
+    els.intakeList.insertAdjacentHTML('beforeend','<div class="notice">No films in Film List. Use Submit to add one.</div>');
+  } else {
+    docs.forEach(doc=>{
+      const f = { id: doc.id, ...doc.data() };
+      const actions = isCommittee
+        ? `<div class="actions">
+             <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">Basic Criteria</button>
+           </div>` : '';
+      els.intakeList.insertAdjacentHTML('beforeend', filmListCard(f, actions));
+    });
+    els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
   }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const actions = (['admin','committee'].includes(state.role))
-      ? `<div class="actions">
-           <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">Basic Criteria</button>
-         </div>` : '';
-    els.intakeList.insertAdjacentHTML('beforeend', filmListCard(f, actions));
-  });
-  els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  if(isCommittee){
+    const fixBtn = document.getElementById('btn-fix-legacy');
+    if(fixBtn) fixBtn.addEventListener('click', fixLegacyFilms);
+  }
 }
 
-// BASIC CRITERIA list + editor (now includes editable synopsis)
+// BASIC (includes editable synopsis)
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
@@ -318,7 +415,6 @@ async function loadBasic(){
     ` : '';
     els.basicList.insertAdjacentHTML('beforeend', filmCard(f, form));
   });
-  // handlers
   els.basicList.querySelectorAll('[data-edit]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
@@ -376,7 +472,6 @@ async function loadVote(){
   const my = state.user.uid;
   for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
-    // Tally votes
     const vs = await db.collection('films').doc(f.id).collection('votes').get();
     let yes=0, no=0;
     vs.forEach(v=>{
@@ -384,7 +479,6 @@ async function loadVote(){
       if(val===1) yes+=1;
       if(val===-1) no+=1;
     });
-    // My vote
     let myVoteVal = 0;
     const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
     if(vSnap.exists) myVoteVal = vSnap.data().value || 0;
@@ -461,11 +555,11 @@ function csvEscape(v){
 }
 
 async function exportApprovedCSV(){
-  const docs = await fetchByStatus('approved'); // already sorted newest first
+  const docs = await fetchByStatus('approved');
   const headers = [
     'title','year','distributor','link','synopsis',
     'runtimeMinutes','language','ageRating','genre','country',
-    'hasDisk','availability','hasUkDistributor','posterUrl','createdAt'
+    'hasDisk','availability','hasUkDistributor','posterUrl','imdbID','createdAt'
   ];
   const rows = [headers.join(',')];
   docs.forEach(d=>{
@@ -486,6 +580,7 @@ async function exportApprovedCSV(){
       f.availability || '',
       f.hasUkDistributor === true ? 'Yes' : f.hasUkDistributor === false ? 'No' : '',
       f.posterUrl || '',
+      f.imdbID || '',
       createdAt
     ].map(csvEscape).join(',');
     rows.push(line);
@@ -517,7 +612,7 @@ async function loadDiscarded(){
   els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- Admin actions to move statuses / set checks ---------- */
+/* ---------------- Admin actions ---------------- */
 async function adminAction(action, filmId){
   if(!['admin','committee'].includes(state.role)){
     alert('Committee only'); return;
@@ -544,7 +639,35 @@ async function adminAction(action, filmId){
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Boot ---------- */
+/* ---------------- Legacy fixer (admin/committee) ---------------- */
+async function fixLegacyFilms(){
+  if(!['admin','committee'].includes(state.role)){
+    alert('Committee only'); return;
+  }
+  if(!confirm('Fix legacy films: set unknown/missing status to intake and backfill createdAt?')) return;
+
+  const known = new Set(['intake','review_basic','uk_check','viewing','voting','approved','discarded']);
+  const snap = await db.collection('films').get();
+  let fixed = 0;
+  for(const d of snap.docs){
+    const f = d.data();
+    const updates = {};
+    if(!f.status || !known.has(String(f.status).toLowerCase())){
+      updates.status = 'intake';
+    }
+    if(!f.createdAt){
+      updates.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    }
+    if(Object.keys(updates).length){
+      await db.collection('films').doc(d.id).update(updates);
+      fixed++;
+    }
+  }
+  alert(`Legacy fix complete. Updated ${fixed} film(s). Reloading list…`);
+  loadIntake();
+}
+
+/* ---------------- Boot ---------------- */
 function boot(){
   initFirebase();
   attachHandlers();
@@ -552,7 +675,7 @@ function boot(){
     state.user = u;
     if(!u){
       showSignedIn(false);
-      location.hash = 'submit'; // start on Submit
+      location.hash = 'submit';
       return;
     }
     await ensureUserDoc(u);
