@@ -1,16 +1,17 @@
-/* Fleet Film App (Archive + UK rating + export fix)
+/* Fleet Film App (Archive + UK rating + CSV fix + cleaner UI)
    Pipeline:
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded -> archived
 
-   Changes:
-     - Archive: buttons on Approved and Discarded; Archive page lists all archived items with origin.
-     - Export CSV: column renamed to "UK Distributor?" using hasUkDistributor Yes/No.
-     - Age rating mapped to UK equivalents when pulling from OMDb; always editable in Basic.
-     - Removed status badges from titles across all pages.
-     - Voting UI: Yes before No.
-     - Film List: shows all films NOT in approved/discarded/archived + shows human stage label.
+   Testing rules (unchanged):
+     - Voting: Yes/No only; auto-approve on first Yes; auto-discard on first No.
 
-   Testing rule remains: voting auto-approve on 1 Yes; auto-discard on 1 No.
+   New:
+     - Archive status with archivedFrom ('approved'|'discarded'); Archive page + buttons on Approved/Discarded.
+     - Export CSV: column "UK Distributor?" outputs Yes/No from hasUkDistributor.
+     - UK Age Rating: auto-map from OMDb's MPAA to UK; stored as ukAgeRating; editable in Basic.
+     - Remove noisy status badges from cards; Film List shows a small step label instead.
+     - Voting UI: Yes before No.
+     - Film List shows every film NOT in approved/discarded/archived, with the step label.
 */
 
 let app, auth, db;
@@ -21,7 +22,7 @@ const els = {
   nav: document.getElementById('nav'),
   signOut: document.getElementById('btn-signout'),
   // lists
-  intakeList: document.getElementById('intake-list'),      // Film List
+  filmList: document.getElementById('intake-list'),      // now the Film List area
   basicList: document.getElementById('basic-list'),
   ukList: document.getElementById('uk-list'),
   viewingList: document.getElementById('viewing-list'),
@@ -31,7 +32,7 @@ const els = {
   archiveList: document.getElementById('archive-list'),
   // views
   views: {
-    intake: document.getElementById('view-intake'),
+    intake: document.getElementById('view-intake'),       // Film List
     submit: document.getElementById('view-submit'),
     basic: document.getElementById('view-basic'),
     uk: document.getElementById('view-uk'),
@@ -43,8 +44,8 @@ const els = {
   },
   // nav buttons
   navButtons: {
-    intake: document.getElementById('nav-intake'),
     submit: document.getElementById('nav-submit'),
+    intake: document.getElementById('nav-intake'),
     basic: document.getElementById('nav-basic'),
     uk: document.getElementById('nav-uk'),
     viewing: document.getElementById('nav-viewing'),
@@ -71,6 +72,7 @@ const els = {
 
 const state = { user: null, role: 'member' };
 
+/* ---------- Firebase ---------- */
 function initFirebase(){
   const cfg = window.__FLEETFILM__CONFIG;
   if(!cfg || !cfg.apiKey) {
@@ -89,7 +91,7 @@ function setView(name){
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  if(name==='intake') loadFilmList(); // Film List (not approved/discarded/archived)
+  if(name==='intake') loadFilmList();  // Film List
   if(name==='basic') loadBasic();
   if(name==='uk') loadUk();
   if(name==='viewing') loadViewing();
@@ -145,8 +147,7 @@ function attachHandlers(){
   window.addEventListener('hashchange', routerFromHash);
 }
 
-/* ---------- OMDb (search + details + picker) ---------- */
-
+/* ---------- OMDb helpers (search + details + picker) ---------- */
 function getOmdbKey(){
   return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
 }
@@ -174,19 +175,21 @@ async function omdbDetailsById(imdbID){
   return (data && data.Response === 'True') ? data : null;
 }
 
-function mapUsToUkRating(us){
-  if(!us) return '';
-  const s = String(us).toUpperCase();
-  // crude mapping – editable later on the Basic page
-  if(s==='G') return 'U';
-  if(s==='PG') return 'PG';
-  if(s==='PG-13') return '12A';
-  if(s==='R') return '15';
-  if(s==='NC-17') return '18';
-  // TV / other: leave blank so committee enters the proper UK cert
-  return '';
+/* ---------- UK rating mapping (best-effort) ---------- */
+function mapMpaaToUk(mpaa){
+  if(!mpaa) return '';
+  const s = mpaa.toUpperCase();
+  // rough mapping; editable later
+  if(s === 'G') return 'U';
+  if(s === 'PG') return 'PG';
+  if(s === 'PG-13') return '12A';
+  if(s === 'R') return '15';
+  if(s === 'NC-17') return '18';
+  if(s.includes('NOT RATED') || s === 'N/A') return 'NR';
+  return s; // fallback as-is
 }
 
+/* ---------- Submit (Title+Year required, OMDb picker) ---------- */
 function showPicker(items){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -198,7 +201,7 @@ function showPicker(items){
     modal.style.cssText = `
       background:#fff; max-width:800px; width:100%; max-height:80vh; overflow:auto;
       border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.3);
-      font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     `;
     modal.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -244,8 +247,6 @@ function showPicker(items){
   });
 }
 
-/* ---------- Submit (Title+Year required, OMDb picker, UK rating mapping) ---------- */
-
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   const yearStr = (els.year.value||'').trim();
@@ -273,13 +274,14 @@ async function submitFilm(){
     year: year,
     distributor: (els.distributor.value||'').trim(),
     link: (els.link.value||'').trim(),
-    synopsis: (els.synopsis.value||'').trim(), // remains editable
+    synopsis: (els.synopsis.value||'').trim(), // editable
     status: 'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     runtimeMinutes: null,
     language: '',
-    ageRating: '', // we will map to UK if OMDb provides US rating
+    ageRating: '',     // keep original MPAA if you want, but we’ll use ukAgeRating for UK view
+    ukAgeRating: '',
     genre: '',
     country: '',
     hasDisk: false,
@@ -296,9 +298,8 @@ async function submitFilm(){
       runtimeMinutes = parseInt(picked.Runtime.match(/\d+/)[0],10);
     }
     base.posterUrl = (picked.Poster && picked.Poster!=='N/A') ? picked.Poster : '';
-    // map US rating to UK
-    const uk = mapUsToUkRating(picked.Rated);
-    if(uk) base.ageRating = uk;
+    base.ageRating = picked.Rated && picked.Rated!=='N/A' ? picked.Rated : '';
+    base.ukAgeRating = mapMpaaToUk(base.ageRating);
     base.genre = picked.Genre && picked.Genre!=='N/A' ? picked.Genre : '';
     base.language = picked.Language && picked.Language!=='N/A' ? picked.Language : '';
     base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
@@ -314,16 +315,14 @@ async function submitFilm(){
     els.submitMsg.textContent = 'Added to Film List.';
     els.submitMsg.classList.remove('hidden');
     els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
-    setTimeout(()=>els.submitMsg.classList.add('hidden'), 2500);
+    setTimeout(()=>els.submitMsg.classList.add('hidden'), 2200);
     setView('intake');
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Fetch helpers (no composite index) ---------- */
-
+/* ---------- Fetch helpers (index-free) ---------- */
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
-  // newest first client-side
   const docs = snap.docs.sort((a, b) => {
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
@@ -332,37 +331,48 @@ async function fetchByStatus(status){
   return docs;
 }
 
-async function fetchAllFilms(){
-  const snap = await db.collection('films').get();
-  return snap.docs.sort((a,b)=>{
+async function fetchNotInStatuses(statuses){
+  // Firestore supports "not-in" on a single field (max 10 values)
+  const snap = await db.collection('films').where('status','not-in', statuses).get();
+  const docs = snap.docs.sort((a, b) => {
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
     return tb - ta;
   });
+  return docs;
 }
 
-/* ---------- Rendering helpers (no status badge) ---------- */
+/* ---------- Rendering helpers ---------- */
 
-function titleBlock(f){
-  const year = f.year ? ` (${f.year})` : '';
-  return `${f.title}${year}`;
+function statusLabel(status){
+  switch(status){
+    case 'intake': return 'Submitted';
+    case 'review_basic': return 'Basic Criteria';
+    case 'uk_check': return 'UK Distributor';
+    case 'viewing': return 'Viewing';
+    case 'voting': return 'Voting';
+    case 'approved': return 'Approved';
+    case 'discarded': return 'Discarded';
+    case 'archived': return 'Archived';
+    default: return status || '';
+  }
 }
 
-function posterImg(url, w=90, h='auto'){
-  return url ? `<img alt="Poster" src="${url}" style="width:${w}px;height:${h};border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
-}
-
-function filmCard(f, actionsHtml=''){
+function filmCard(f, actionsHtml='', opts={}){
+  const { showStatus=false, showTinyStatus=false } = opts;
+  const year = f.year ? `(${f.year})` : '';
+  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
+  const statusHtml = showStatus ? `<span class="badge">${statusLabel(f.status)}</span>` : (showTinyStatus ? `<span class="badge" style="opacity:.8">${statusLabel(f.status)}</span>` : '');
   return `<div class="card">
     <div class="item">
       <div style="display:flex;align-items:flex-start;gap:12px;">
-        ${posterImg(f.posterUrl)}
+        ${poster}
         <div>
-          <div class="item-title">${titleBlock(f)}</div>
+          <div class="item-title">${f.title} ${year} ${statusHtml}</div>
           <div class="kv">
             <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
             <div>Language:</div><div>${f.language || '—'}</div>
-            <div>Age Rating (UK):</div><div>${f.ageRating || '—'}</div>
+            <div>UK Age Rating:</div><div>${f.ukAgeRating || '—'}</div>
             <div>Genre:</div><div>${f.genre || '—'}</div>
             <div>Country:</div><div>${f.country || '—'}</div>
             <div>UK Distributor:</div><div>${f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':'—'}</div>
@@ -376,61 +386,54 @@ function filmCard(f, actionsHtml=''){
   </div>`;
 }
 
-function minimalCard(f, rightHtml=''){
+function minimalCard(f, rightHtml='', opts={}){
+  const { showTinyStatus=false } = opts;
+  const year = f.year ? `(${f.year})` : '';
+  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
+  const statusHtml = showTinyStatus ? `<span class="badge" style="margin-left:6px">${statusLabel(f.status)}</span>` : '';
   return `<div class="card">
     <div class="item">
       <div style="display:flex;align-items:center;gap:12px;">
-        ${posterImg(f.posterUrl)}
-        <div class="item-title">${titleBlock(f)}</div>
+        ${poster}
+        <div class="item-title">${f.title} ${year} ${statusHtml}</div>
       </div>
-      <div>${rightHtml || ''}</div>
+      <div>${rightHtml}</div>
     </div>
   </div>`;
-}
-
-/* ---------- Human status label for Film List ---------- */
-function stageLabel(status){
-  switch(status){
-    case 'review_basic': return 'Basic Criteria';
-    case 'uk_check': return 'UK Distributor';
-    case 'viewing': return 'Viewing';
-    case 'voting': return 'Voting';
-    case 'intake': return 'Intake';
-    default: return status;
-  }
 }
 
 /* ============================
    VIEWS
    ============================ */
 
-// FILM LIST: everything not in approved/discarded/archived
+// FILM LIST: show everything NOT in approved/discarded/archived + label for which step they’re in
 async function loadFilmList(){
-  const docs = await fetchAllFilms();
-  const filtered = docs.filter(d=>{
-    const s = (d.data().status || '').toLowerCase();
-    return !['approved','discarded','archived'].includes(s);
-  });
-  els.intakeList.innerHTML = '';
-  if(!filtered.length){
-    els.intakeList.innerHTML = '<div class="notice">No films to show. Use Submit to add one.</div>';
+  const isCommittee = ['admin','committee'].includes(state.role);
+  const docs = await fetchNotInStatuses(['approved','discarded','archived']);
+  els.filmList.innerHTML = '';
+  if(!docs.length){
+    els.filmList.innerHTML = '<div class="notice">Empty. Use Submit to add a film.</div>';
     return;
   }
-  const isCommittee = ['admin','committee'].includes(state.role);
-  filtered.forEach(doc=>{
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const right = `<div style="display:flex;gap:8px;align-items:center;">
-        <span class="badge">${stageLabel(f.status)}</span>
-        ${isCommittee ? `<button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">Basic Criteria</button>` : ''}
-      </div>`;
-    els.intakeList.insertAdjacentHTML('beforeend', minimalCard(f, right));
+    const actions = isCommittee
+      ? `<div class="actions">
+           ${f.status==='intake' ? `<button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">Basic Criteria</button>` : ''}
+           ${f.status==='review_basic' ? `<button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate → UK</button>` : ''}
+           ${f.status==='uk_check' ? `
+             <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor ✓</button>
+             <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>` : ''}
+           ${f.status==='viewing' ? `<button class="btn btn-primary" data-act="to-voting" data-id="${f.id}">→ Voting</button>` : ''}
+           ${f.status==='voting' ? `<!-- votes happen on Voting page -->` : ''}
+         </div>`
+      : '';
+    els.filmList.insertAdjacentHTML('beforeend', minimalCard(f, actions, {showTinyStatus:true}));
   });
-  if(isCommittee){
-    els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
-  }
+  els.filmList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// BASIC
+// BASIC (includes editable synopsis + UK Age Rating)
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
@@ -441,9 +444,9 @@ async function loadBasic(){
       <div style="margin-top:8px">
         <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
         <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
-        <label>Age Rating (UK)<input type="text" data-edit="ageRating" data-id="${f.id}" value="${f.ageRating || ''}" /></label>
-        <label>Genre<input type="text" data-edit="genre" data-id="${f.genre || ''}" /></label>
-        <label>Country<input type="text" data-edit="country" data-id="${f.country || ''}" /></label>
+        <label>UK Age Rating<input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, R18, NR" /></label>
+        <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
+        <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
         <label>Disk Available?
           <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
         </label>
@@ -456,8 +459,9 @@ async function loadBasic(){
         </div>
       </div>
     ` : '';
-    els.basicList.insertAdjacentHTML('beforeend', filmCard(f, form));
+    els.basicList.insertAdjacentHTML('beforeend', filmCard(f, form, {showStatus:false}));
   });
+  // inline save on change
   els.basicList.querySelectorAll('[data-edit]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
@@ -484,7 +488,7 @@ async function loadUk(){
         <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
       </div>
     ` : '';
-    els.ukList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    els.ukList.insertAdjacentHTML('beforeend', filmCard(f, actions, {showStatus:false}));
   });
   els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
@@ -502,12 +506,12 @@ async function loadViewing(){
         <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
       </div>
     ` : '';
-    els.viewingList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    els.viewingList.insertAdjacentHTML('beforeend', filmCard(f, actions, {showStatus:false}));
   });
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// VOTING (Yes then No)
+// VOTING (Yes first, then No)
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -531,7 +535,7 @@ async function loadVote(){
       <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
     </div>
     <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>`;
-    els.voteList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    els.voteList.insertAdjacentHTML('beforeend', filmCard(f, actions, {showStatus:false}));
   }
   els.voteList.querySelectorAll('button[data-vote]').forEach(btn => {
     btn.addEventListener('click', () => castVote(btn.dataset.id, parseInt(btn.dataset.vote,10)));
@@ -548,7 +552,7 @@ async function castVote(filmId, value){
   }catch(e){ alert(e.message); }
 }
 
-// Testing thresholds: 1 yes -> approved, 1 no -> discarded
+// 1 yes -> approved, 1 no -> discarded (testing)
 async function checkAutoOutcome(filmId){
   const ref = db.collection('films').doc(filmId);
   const vs = await ref.collection('votes').get();
@@ -565,7 +569,7 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-// APPROVED (+ Export CSV + Archive)
+// APPROVED (+ Archive + Export CSV)
 async function loadApproved(){
   const docs = await fetchByStatus('approved');
   els.approvedList.innerHTML = `
@@ -573,8 +577,7 @@ async function loadApproved(){
       <button class="btn btn-primary" id="btn-export-approved">Export CSV</button>
     </div>
   `;
-  const exportBtn = document.getElementById('btn-export-approved');
-  if(exportBtn) exportBtn.addEventListener('click', exportApprovedCSV);
+  document.getElementById('btn-export-approved').addEventListener('click', exportApprovedCSV);
 
   if(!docs.length){
     els.approvedList.insertAdjacentHTML('beforeend','<div class="notice">No approved films yet.</div>');
@@ -588,7 +591,7 @@ async function loadApproved(){
         <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
         <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
       </div>` : '';
-    els.approvedList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    els.approvedList.insertAdjacentHTML('beforeend', filmCard(f, actions, {showStatus:false}));
   });
   els.approvedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
@@ -602,9 +605,9 @@ function csvEscape(v){
 async function exportApprovedCSV(){
   const docs = await fetchByStatus('approved');
   const headers = [
-    'title','year','link','synopsis',
-    'runtimeMinutes','language','ageRating','genre','country',
-    'hasDisk','availability','UK Distributor?','posterUrl','imdbID','createdAt'
+    'title','year','UK Distributor?','link','synopsis',
+    'runtimeMinutes','language','ukAgeRating','genre','country',
+    'hasDisk','availability','posterUrl','imdbID','createdAt'
   ];
   const rows = [headers.join(',')];
   docs.forEach(d=>{
@@ -613,16 +616,16 @@ async function exportApprovedCSV(){
     const line = [
       f.title || '',
       f.year || '',
+      (f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':''), // <- requested change
       f.link || '',
       f.synopsis || '',
       f.runtimeMinutes ?? '',
       f.language || '',
-      f.ageRating || '',
+      f.ukAgeRating || '',
       f.genre || '',
       f.country || '',
       f.hasDisk ? 'Yes' : 'No',
       f.availability || '',
-      f.hasUkDistributor === true ? 'Yes' : f.hasUkDistributor === false ? 'No' : '',
       f.posterUrl || '',
       f.imdbID || '',
       createdAt
@@ -640,7 +643,7 @@ async function exportApprovedCSV(){
   URL.revokeObjectURL(url);
 }
 
-// DISCARDED (with restore + Archive)
+// DISCARDED (+ Archive)
 async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
@@ -650,4 +653,74 @@ async function loadDiscarded(){
     const actions = (['admin','committee'].includes(state.role)) ? `
       <div class="actions">
         <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Film List</button>
-        <button class="btn
+        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
+      </div>` : '';
+    els.discardedList.insertAdjacentHTML('beforeend', filmCard(f, actions, {showStatus:false}));
+  });
+  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+// ARCHIVE page
+async function loadArchive(){
+  const docs = await fetchByStatus('archived');
+  els.archiveList.innerHTML = '';
+  if(!docs.length){ els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>'; return; }
+  docs.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
+    const right = origin ? `<span class="badge">${origin}</span>` : '';
+    els.archiveList.insertAdjacentHTML('beforeend', minimalCard(f, right, {showTinyStatus:false}));
+  });
+}
+
+/* ---------- Admin actions ---------- */
+async function adminAction(action, filmId){
+  if(!['admin','committee'].includes(state.role)){
+    alert('Committee only'); return;
+  }
+  const ref = db.collection('films').doc(filmId);
+  try{
+    if(action==='to-basic') await ref.update({ status:'review_basic' });
+    if(action==='basic-save'){ /* fields auto-save on change */ }
+    if(action==='basic-validate'){
+      const snap = await ref.get();
+      const f = snap.data();
+      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+      const okLang = (f.language || '').trim().length > 0;
+      if(!okRuntime){ alert('Runtime must be 2h30 (150 min) or less.'); return; }
+      if(!okLang){ alert('Please capture Language.'); return; }
+      await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
+    }
+    if(action==='uk-yes') await ref.update({ hasUkDistributor:true, status:'viewing' });
+    if(action==='uk-no') await ref.update({ hasUkDistributor:false, status:'discarded' });
+    if(action==='to-voting') await ref.update({ status:'voting' });
+    if(action==='to-discard') await ref.update({ status:'discarded' });
+    if(action==='restore') await ref.update({ status:'intake' });
+    if(action==='to-archive'){
+      const snap = await ref.get();
+      const current = (snap.exists && snap.data().status) || '';
+      const origin = (current === 'approved' || current === 'discarded') ? current : '';
+      await ref.update({ status:'archived', archivedFrom: origin });
+    }
+    routerFromHash();
+  }catch(e){ alert(e.message); }
+}
+
+/* ---------- Boot ---------- */
+function boot(){
+  initFirebase();
+  attachHandlers();
+  auth.onAuthStateChanged(async (u) => {
+    state.user = u;
+    if(!u){
+      showSignedIn(false);
+      location.hash = 'submit';
+      return;
+    }
+    await ensureUserDoc(u);
+    showSignedIn(true);
+    routerFromHash();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', boot);
