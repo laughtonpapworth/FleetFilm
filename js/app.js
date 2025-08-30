@@ -1,13 +1,17 @@
-/* Fleet Film App (Testing-config)
-   Pipeline (logical):
+/* Fleet Film App (Testing-config + UX updates)
+   Pipeline:
      intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded
 
-   Testing changes:
-     - Voting buttons: ONLY Yes / No (no "Strong Yes").
-     - Auto-approve on FIRST Yes; auto-discard on FIRST No.
-     - Optional: on add, fetch metadata + poster from OMDb (set omdbApiKey in firebase-config to enable).
+   Changes per request:
+     - Voting: Yes / No only; auto-approve on first Yes; auto-discard on first No (testing).
+     - On add: fetch poster, runtime, rating, genre, language, country, synopsis from OMDb (if omdbApiKey present).
+       Synopsis remains editable.
+     - "Intake" view used as Film List: only title + poster + "Basic Criteria" button.
+     - Default/start view = Submit (and you’ll move the Submit tab to the left in HTML).
+     - Approved view has "Export CSV" for all collected fields.
 
-   NOTE: Intake tab shows real Intake again (new/returned films visible there).
+   To enable metadata fetch:
+     window.__FLEETFILM__CONFIG = { ..., omdbApiKey: "YOUR_OMDB_KEY" }
 */
 
 let app, auth, db;
@@ -18,7 +22,7 @@ const els = {
   nav: document.getElementById('nav'),
   signOut: document.getElementById('btn-signout'),
   // lists
-  intakeList: document.getElementById('intake-list'),
+  intakeList: document.getElementById('intake-list'),      // "Film List"
   basicList: document.getElementById('basic-list'),
   ukList: document.getElementById('uk-list'),
   viewingList: document.getElementById('viewing-list'),
@@ -27,7 +31,7 @@ const els = {
   discardedList: document.getElementById('discarded-list'),
   // views
   views: {
-    intake: document.getElementById('view-intake'),
+    intake: document.getElementById('view-intake'),       // "Film List"
     submit: document.getElementById('view-submit'),
     basic: document.getElementById('view-basic'),
     uk: document.getElementById('view-uk'),
@@ -83,7 +87,7 @@ function setView(name){
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  if(name==='intake') loadIntake();
+  if(name==='intake') loadIntake();     // Film List
   if(name==='basic') loadBasic();
   if(name==='uk') loadUk();
   if(name==='viewing') loadViewing();
@@ -93,7 +97,7 @@ function setView(name){
 }
 
 function routerFromHash(){
-  const h = location.hash.replace('#','') || 'intake'; // back to Intake by default
+  const h = location.hash.replace('#','') || 'submit'; // default to Submit first
   setView(h);
 }
 
@@ -138,7 +142,7 @@ function attachHandlers(){
   window.addEventListener('hashchange', routerFromHash);
 }
 
-// Submit: minimal intake (title only is fine) + optional metadata fetch
+/* ---------- Add film (with optional metadata fetch) ---------- */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   if(!title){ alert('Title required'); return; }
@@ -147,7 +151,7 @@ async function submitFilm(){
     year: parseInt(els.year.value || '0', 10) || null,
     distributor: (els.distributor.value||'').trim(),
     link: (els.link.value||'').trim(),
-    synopsis: (els.synopsis.value||'').trim(),
+    synopsis: (els.synopsis.value||'').trim(), // editable; we’ll overwrite only if empty
     status: 'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -166,20 +170,20 @@ async function submitFilm(){
   try{
     const ref = await db.collection('films').add(doc);
     // Try metadata fetch (best-effort)
-    fetchAndMergeMetadata(ref, title, doc.year).catch(console.warn);
+    fetchAndMergeMetadata(ref, title, doc.year, doc.synopsis).catch(console.warn);
 
-    els.submitMsg.textContent = 'Submitted to Intake.';
+    els.submitMsg.textContent = 'Submitted to Film List.';
     els.submitMsg.classList.remove('hidden');
     els.title.value=''; els.year.value=''; els.distributor.value=''; els.link.value=''; els.synopsis.value='';
-    setTimeout(()=>els.submitMsg.classList.add('hidden'), 3000);
-    setView('intake'); // now shows real Intake again
+    setTimeout(()=>els.submitMsg.classList.add('hidden'), 2500);
+    setView('intake'); // Film List
   }catch(e){ alert(e.message); }
 }
 
-// ---- Metadata fetch (OMDb) ----
-async function fetchAndMergeMetadata(ref, title, year){
+/* ---------- Metadata fetch (OMDb) ---------- */
+async function fetchAndMergeMetadata(ref, title, year, currentSynopsis){
   const key = (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || window.__FLEETFILM__OMDB_KEY;
-  if(!key) return;
+  if(!key){ console.info('No OMDb key configured; skipping metadata fetch'); return; }
   const params = new URLSearchParams({ t: title, apikey: key });
   if(year) params.set('y', String(year));
   const url = `https://www.omdbapi.com/?${params.toString()}`;
@@ -202,10 +206,15 @@ async function fetchAndMergeMetadata(ref, title, year){
   };
   if(runtimeMinutes) patch.runtimeMinutes = runtimeMinutes;
 
+  // Only set synopsis if user left it blank on submit (keep it editable later)
+  if(!currentSynopsis && data.Plot && data.Plot !== 'N/A'){
+    patch.synopsis = data.Plot;
+  }
+
   await ref.update(patch);
 }
 
-// ---- Helper: fetch by status without composite index
+/* ---------- Helper: fetch by status (no composite index needed) ---------- */
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
   const docs = snap.docs.sort((a, b) => {
@@ -216,7 +225,7 @@ async function fetchByStatus(status){
   return docs;
 }
 
-// Rendering helpers
+/* ---------- Rendering helpers ---------- */
 function filmCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
@@ -243,34 +252,45 @@ function filmCard(f, actionsHtml=''){
   </div>`;
 }
 
+// Minimal card for Film List (title + poster + Basic Criteria button)
+function filmListCard(f, actionsHtml=''){
+  const year = f.year ? `(${f.year})` : '';
+  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" style="width:90px;height:auto;border-radius:8px;margin-right:12px;object-fit:cover"/>` : '';
+  return `<div class="card">
+    <div class="item">
+      <div style="display:flex;align-items:center;gap:12px;">
+        ${poster}
+        <div class="item-title">${f.title} ${year}</div>
+      </div>
+      <div>${actionsHtml}</div>
+    </div>
+  </div>`;
+}
+
 /* ============================
    VIEWS
    ============================ */
 
-// INTAKE (real intake) + short explanation banner
+// FILM LIST (formerly Intake): only title, poster, Basic Criteria button
 async function loadIntake(){
   const docs = await fetchByStatus('intake');
-  els.intakeList.innerHTML = `
-    <div class="notice">
-      <strong>Intake:</strong> new film suggestions land here with minimal info. Committee moves items to
-      <em>Basic Criteria</em> to capture runtime, language, rating, etc.
-    </div>`;
+  els.intakeList.innerHTML = ''; // no banner; keep it clean per spec
   if(!docs.length){
-    els.intakeList.insertAdjacentHTML('beforeend','<div class="notice">No films in Intake.</div>');
+    els.intakeList.innerHTML = '<div class="notice">No films yet. Use Submit to add one.</div>';
     return;
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role))
       ? `<div class="actions">
-           <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">→ Basic Criteria</button>
+           <button class="btn btn-primary" data-act="to-basic" data-id="${f.id}">Basic Criteria</button>
          </div>` : '';
-    els.intakeList.insertAdjacentHTML('beforeend', filmCard(f, actions));
+    els.intakeList.insertAdjacentHTML('beforeend', filmListCard(f, actions));
   });
   els.intakeList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// BASIC CRITERIA list + editor
+// BASIC CRITERIA list + editor (now includes editable synopsis)
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
@@ -278,7 +298,6 @@ async function loadBasic(){
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const form = (['admin','committee'].includes(state.role)) ? `
-      <div class="actions"></div>
       <div style="margin-top:8px">
         <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
         <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
@@ -289,6 +308,7 @@ async function loadBasic(){
           <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
         </label>
         <label>Where to see (Apple TV, Netflix, DVD, etc.)<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" /></label>
+        <label>Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
         <div class="actions">
           <button class="btn btn-accent" data-act="basic-save" data-id="${f.id}">Save</button>
           <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → UK Check</button>
@@ -408,11 +428,20 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-// APPROVED
+// APPROVED (+ Export CSV)
 async function loadApproved(){
   const docs = await fetchByStatus('approved');
-  els.approvedList.innerHTML = '';
-  if(!docs.length){ els.approvedList.innerHTML = '<div class="notice">No approved films yet.</div>'; return; }
+  els.approvedList.innerHTML = `
+    <div class="actions" style="margin-bottom:12px;">
+      <button class="btn btn-primary" id="btn-export-approved">Export CSV</button>
+    </div>
+  `;
+  document.getElementById('btn-export-approved').addEventListener('click', exportApprovedCSV);
+
+  if(!docs.length){
+    els.approvedList.insertAdjacentHTML('beforeend','<div class="notice">No approved films yet.</div>');
+    return;
+  }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role)) ? `
@@ -425,6 +454,53 @@ async function loadApproved(){
   els.approvedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
+function csvEscape(v){
+  if(v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+async function exportApprovedCSV(){
+  const docs = await fetchByStatus('approved'); // already sorted newest first
+  const headers = [
+    'title','year','distributor','link','synopsis',
+    'runtimeMinutes','language','ageRating','genre','country',
+    'hasDisk','availability','hasUkDistributor','posterUrl','createdAt'
+  ];
+  const rows = [headers.join(',')];
+  docs.forEach(d=>{
+    const f = d.data();
+    const createdAt = f.createdAt?.toDate?.() ? f.createdAt.toDate().toISOString() : '';
+    const line = [
+      f.title || '',
+      f.year || '',
+      f.distributor || '',
+      f.link || '',
+      f.synopsis || '',
+      f.runtimeMinutes ?? '',
+      f.language || '',
+      f.ageRating || '',
+      f.genre || '',
+      f.country || '',
+      f.hasDisk ? 'Yes' : 'No',
+      f.availability || '',
+      f.hasUkDistributor === true ? 'Yes' : f.hasUkDistributor === false ? 'No' : '',
+      f.posterUrl || '',
+      createdAt
+    ].map(csvEscape).join(',');
+    rows.push(line);
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `approved_films_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // DISCARDED (with restore)
 async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
@@ -434,14 +510,14 @@ async function loadDiscarded(){
     const f = { id: doc.id, ...doc.data() };
     const actions = (['admin','committee'].includes(state.role)) ? `
       <div class="actions">
-        <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Intake</button>
+        <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Film List</button>
       </div>` : '';
     els.discardedList.insertAdjacentHTML('beforeend', filmCard(f, actions));
   });
   els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-// Admin actions to move statuses / set checks
+/* ---------- Admin actions to move statuses / set checks ---------- */
 async function adminAction(action, filmId){
   if(!['admin','committee'].includes(state.role)){
     alert('Committee only'); return;
@@ -468,7 +544,7 @@ async function adminAction(action, filmId){
   }catch(e){ alert(e.message); }
 }
 
-// Boot
+/* ---------- Boot ---------- */
 function boot(){
   initFirebase();
   attachHandlers();
@@ -476,7 +552,7 @@ function boot(){
     state.user = u;
     if(!u){
       showSignedIn(false);
-      location.hash = 'intake';
+      location.hash = 'submit'; // start on Submit
       return;
     }
     await ensureUserDoc(u);
