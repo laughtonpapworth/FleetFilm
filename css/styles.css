@@ -18,22 +18,25 @@ html,body{
 
 /* Header & Nav */
 .header{
-  position:sticky; top:0; z-index:10;
-  background:#f9fafb; border-bottom:1px solid #e5e7eb; padding:10px 16px;
-  display:flex; gap:12px; align-items:center; justify-content:space-between;
+  position:sticky; top:0; z-index:50;
+  background:#f9fafb; border-bottom:1px solid #e5e7eb; padding:8px 10px;
+  display:flex; gap:8px; align-items:center; justify-content:space-between;
 }
 .brand{display:flex; gap:10px; align-items:center; font-weight:700; font-size:22px;}
 .brand .logo{width:28px; height:28px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px;}
 
-.nav{ display:flex; flex-wrap:wrap; gap:8px; }
+.nav{
+  display:flex; gap:8px; align-items:center;
+  flex-wrap:wrap;
+}
 .nav button{
   font-size:18px; padding:10px 14px; border:1px solid #e5e7eb; border-radius:12px;
-  background:#fff; cursor:pointer;
+  background:#fff; cursor:pointer; white-space:nowrap;
 }
 .nav button.active{border-color:var(--primary); outline:3px solid #c7d2fe;}
 
 /* Layout containers */
-.container{max-width:980px; margin:16px auto; padding:0 16px 56px;}
+.container{max-width:980px; margin:16px auto; padding:0 16px 64px;}
 .card{
   background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; margin:12px 0;
   box-shadow: 0 1px 2px rgba(0,0,0,0.03);
@@ -50,8 +53,8 @@ input[type="text"], input[type="url"], input[type="email"], input[type="number"]
   width:100%; font-size:18px; padding:12px; border:1px solid #d1d5db; border-radius:12px; margin-top:6px;
 }
 textarea{min-height:110px}
-input[type="checkbox"]{transform: scale(1.4); margin-right:8px;}
-input[type="radio"]{transform: scale(1.4); margin-right:8px;}
+input[type="checkbox"]{transform: scale(1.2); margin-right:8px;}
+input[type="radio"]{transform: scale(1.2); margin-right:8px;}
 .large-label{display:flex; align-items:center; gap:10px; font-size:20px; padding:8px 0;}
 
 /* Buttons */
@@ -89,15 +92,8 @@ a{color:#2563eb}
 .kv{display:grid; grid-template-columns: 180px 1fr; gap:8px; font-size:18px;}
 
 /* Posters */
-.poster{ width:90px; height:auto; border-radius:8px; object-fit:cover; margin-right:12px; }
-.poster-small{ width:60px; height:88px; border-radius:6px; object-fit:cover; }
-
-/* Minimal status chip used on Film List for navigation (NOT state change) */
-.chip{
-  display:inline-block; padding:4px 8px; border:1px solid #ddd; border-radius:999px; font-size:12px;
-  background:#f6f6f6;
-}
-.chip-link{ cursor:pointer; }
+.poster{ width:90px; height:auto; border-radius:8px; object-fit:cover; margin-right:12px; display:block; }
+.poster-small{ width:60px; height:88px; border-radius:6px; object-fit:cover; display:block; }
 
 /* Detail layout helpers */
 .item-left{ display:flex; align-items:flex-start; gap:12px; }
@@ -137,10 +133,34 @@ footer{
   font-size:16px; color:var(--muted); text-align:center;
 }
 
-/* ---------------- Responsive ---------------- */
-
-/* Mobile first: stack cards, simplify grids, shrink poster, tighter KV */
+/* ---------------- Mobile (<=768px) ---------------- */
 @media (max-width: 768px){
+
+  /* Make the header nav a horizontal scroll bar so only one view is shown at a time cleanly */
+  .header{
+    padding:8px 8px;
+    flex-direction:column;
+    align-items:stretch;
+    gap:8px;
+  }
+
+  .nav{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;   /* Firefox */
+    gap:6px;
+  }
+  .nav::-webkit-scrollbar{ display:none; } /* WebKit */
+  .nav button{
+    font-size:16px; padding:8px 12px;
+    flex:0 0 auto;
+  }
+
+  .container{ padding:0 10px 72px; }
+
+  /* Stack cards and controls */
   .item{
     grid-template-columns: 1fr;       /* stack title/controls */
     align-items:stretch;
@@ -148,19 +168,29 @@ footer{
   .item-left{ align-items:center; }
   .item-right{ justify-content:flex-start; }
 
+  /* Posters smaller on phones */
+  .poster{ width:72px; margin-right:8px; }
+  .poster-small{ width:54px; height:80px; }
+
+  /* Tighter details grid */
   .kv{ grid-template-columns: 120px 1fr; font-size:16px; }
 
+  /* Forms collapse to single column */
   .form-grid{ grid-template-columns: 1fr; }
   .form-grid .span-2{ grid-column: span 1; }
 
-  .poster{ width:72px; margin-right:8px; }
-  .nav button{ font-size:16px; padding:8px 12px; }
+  /* Headings slightly smaller */
   h1{ font-size:24px; }
   h2{ font-size:20px; }
   h3{ font-size:18px; }
+
+  /* Buttons a touch smaller to avoid wrapping chaos */
+  .btn{ font-size:16px; padding:10px 14px; }
+  .big{ font-size:18px; padding:12px 16px; }
 }
 
-/* Desktop: current look remains via defaults above */
+/* ---------------- Desktop (>=769px) ---------------- */
+/* Defaults above keep your current desktop look */
 @media (min-width: 769px){
-  /* No extra rules needed; desktop uses the defaults defined earlier */
+  /* No extra rules needed */
 }
