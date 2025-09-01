@@ -146,6 +146,30 @@ function attachHandlers(){
   window.addEventListener('hashchange', routerFromHash);
 }
 
+const filterState = { q:'', status:'' };
+
+function setupFilmListFilters(){
+  const q = document.getElementById('filter-q');
+  const s = document.getElementById('filter-status');
+  const clr = document.getElementById('filter-clear');
+  if(!q || !s || !clr) return;
+
+  q.addEventListener('input', ()=>{
+    filterState.q = q.value.trim().toLowerCase();
+    loadFilmList(); // re-render
+  });
+  s.addEventListener('change', ()=>{
+    filterState.status = s.value;
+    loadFilmList();
+  });
+  clr.addEventListener('click', ()=>{
+    filterState.q=''; filterState.status='';
+    q.value=''; s.value='';
+    loadFilmList();
+  });
+}
+
+
 /* ---------- OMDb helpers ---------- */
 function getOmdbKey(){
   return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
