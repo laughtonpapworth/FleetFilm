@@ -1,6 +1,6 @@
 /* Fleet Film App (Film List shows ONE working Next button; no 'not-in' query) 
    Pipeline:
-     intake -> review_basic -> uk_check -> viewing -> voting -> approved / discarded -> archived
+     intake -> review_basic -> uk_check -> holding -> viewing -> voting -> approved / discarded -> archived
 */
 
 let app, auth, db;
@@ -14,6 +14,7 @@ const els = {
   filmList: document.getElementById('intake-list'),      // Film List container (kept id for compatibility)
   basicList: document.getElementById('basic-list'),
   ukList: document.getElementById('uk-list'),
+  holdingList: document.getElementById('holding-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
   approvedList: document.getElementById('approved-list'),
@@ -25,6 +26,7 @@ const els = {
     submit: document.getElementById('view-submit'),
     basic: document.getElementById('view-basic'),
     uk: document.getElementById('view-uk'),
+    holding: document.getElementById('view-holding'),
     viewing: document.getElementById('view-viewing'),
     vote: document.getElementById('view-vote'),
     approved: document.getElementById('view-approved'),
@@ -37,6 +39,7 @@ const els = {
     intake: document.getElementById('nav-intake'),
     basic: document.getElementById('nav-basic'),
     uk: document.getElementById('nav-uk'),
+    holding: document.getElementById('nav-holding'),
     viewing: document.getElementById('nav-viewing'),
     vote: document.getElementById('nav-vote'),
     approved: document.getElementById('nav-approved'),
@@ -61,7 +64,7 @@ const els = {
 
 const state = { user: null, role: 'member' };
 
-/* ========= NEW: Required fields for Basic ========= */
+/* ========= Required fields for Basic ========= */
 const REQUIRED_BASIC_FIELDS = [
   'runtimeMinutes',  // number; must be <= 150
   'language',        // string
@@ -92,6 +95,7 @@ function setView(name){
   if(name==='intake') loadFilmList();  // Film List
   if(name==='basic') loadBasic();
   if(name==='uk') loadUk();
+  if(name==='holding') loadHolding();
   if(name==='viewing') loadViewing();
   if(name==='vote') loadVote();
   if(name==='approved') loadApproved();
@@ -292,6 +296,7 @@ async function submitFilm(){
     availability: '',
     criteria: { basic_pass: false, screen_program_pass: false },
     hasUkDistributor: null,
+    distStatus: '',    // NEW: distributor status lifecycle
     posterUrl: '',
     imdbID: ''
   };
@@ -342,7 +347,7 @@ async function fetchByStatus(status){
 
 async function fetchFilmListDocs(){
   // Explicitly fetch each status that belongs on Film List
-  const statuses = ['intake','review_basic','uk_check','viewing','voting'];
+  const statuses = ['intake','review_basic','uk_check','holding','viewing','voting'];
   const all = [];
   for(const s of statuses){
     const docs = await fetchByStatus(s);
@@ -359,7 +364,7 @@ async function fetchFilmListDocs(){
 
 /* ---------- Rendering helpers ---------- */
 
-function filmListCard(f, nextHtml=''){
+function filmListCard(f, rightHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
   return `<div class="card">
@@ -368,7 +373,7 @@ function filmListCard(f, nextHtml=''){
         ${poster}
         <div class="item-title">${f.title} ${year}</div>
       </div>
-      <div class="item-right">${nextHtml}</div>
+      <div class="item-right">${rightHtml}</div>
     </div>
   </div>`;
 }
@@ -376,12 +381,13 @@ function filmListCard(f, nextHtml=''){
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
+  const distBadge = f.distStatus ? `<span class="badge">Distributor: ${f.distStatus}</span>` : '';
   return `<div class="card">
     <div class="item">
       <div class="item-left">
         ${poster}
         <div>
-          <div class="item-title">${f.title} ${year}</div>
+          <div class="item-title">${f.title} ${year} ${distBadge}</div>
           <div class="kv">
             <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
             <div>Language:</div><div>${f.language || '—'}</div>
@@ -423,6 +429,8 @@ function nextActionFor(f){
       }};
     case 'uk_check':
       return { label: 'Open UK Distributor Check', type: 'nav', handler: ()=>{ location.hash = 'uk'; } };
+    case 'holding':
+      return { label: 'Move to Viewing', type: 'update', handler: async (ref)=>{ await ref.update({ status:'viewing' }); } };
     case 'viewing':
       return { label: 'Move to Voting', type: 'update', handler: async (ref)=>{ await ref.update({ status:'voting' }); } };
     case 'voting':
@@ -514,13 +522,42 @@ async function loadUk(){
     const f = { id: doc.id, ...doc.data() };
     const actions = `
       <div class="actions">
-        <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor ✓</button>
-        <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
+        <button class="btn btn-ghost"  data-act="dist-pending"  data-id="${f.id}">Mark Pending</button>
+        <button class="btn btn-ghost"  data-act="dist-likely"   data-id="${f.id}">Mark Likely</button>
+        <button class="btn btn-ghost"  data-act="dist-unlikely" data-id="${f.id}">Mark Unlikely</button>
+        <button class="btn btn-accent" data-act="uk-yes"        data-id="${f.id}">Distributor Confirmed ✓</button>
+        <button class="btn btn-warn"   data-act="uk-no"         data-id="${f.id}">No Distributor</button>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" data-act="to-viewing"  data-id="${f.id}">→ Viewing</button>
+        <button class="btn btn-ghost"   data-act="to-holding"  data-id="${f.id}">→ Holding Pen</button>
       </div>
     `;
     els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+/* ---------- HOLDING ---------- */
+async function loadHolding(){
+  const docs = await fetchByStatus('holding');
+  els.holdingList && (els.holdingList.innerHTML = '');
+  if(!els.holdingList) return; // if HTML not added yet, skip
+  if(!docs.length){ els.holdingList.innerHTML = '<div class="notice">Holding is empty.</div>'; return; }
+  docs.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const statusBadge = f.distStatus ? `<span class="badge">${f.distStatus}</span>` : '';
+    const actions = `
+      <div class="actions">
+        ${statusBadge}
+        <button class="btn btn-primary" data-act="to-viewing" data-id="${f.id}">→ Viewing</button>
+        <button class="btn btn-ghost"   data-act="to-uk"      data-id="${f.id}">Back to UK Check</button>
+        <button class="btn btn-danger"  data-act="to-discard" data-id="${f.id}">Discard</button>
+      </div>
+    `;
+    els.holdingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
+  });
+  els.holdingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
 /* ---------- VIEWING ---------- */
@@ -731,11 +768,25 @@ async function adminAction(action, filmId){
       }
       await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
     }
-    if(action==='uk-yes') await ref.update({ hasUkDistributor:true, status:'viewing' });
-    if(action==='uk-no') await ref.update({ hasUkDistributor:false, status:'discarded' });
-    if(action==='to-voting') await ref.update({ status:'voting' });
+
+    // NEW: Distributor status marks
+    if(action==='dist-pending')   await ref.update({ distStatus:'pending' });
+    if(action==='dist-likely')    await ref.update({ distStatus:'likely' });
+    if(action==='dist-unlikely')  await ref.update({ distStatus:'unlikely' });
+
+    // UK decisions / routing
+    if(action==='uk-yes') await ref.update({ hasUkDistributor:true, distStatus:'confirmed', status:'viewing' });
+    if(action==='uk-no')  await ref.update({ hasUkDistributor:false, distStatus:'none',      status:'discarded' });
+
+    // Stage moves
+    if(action==='to-holding') await ref.update({ status:'holding' });
+    if(action==='to-viewing') await ref.update({ status:'viewing' });
+    if(action==='to-uk')      await ref.update({ status:'uk_check' });
+    if(action==='to-voting')  await ref.update({ status:'voting' });
     if(action==='to-discard') await ref.update({ status:'discarded' });
-    if(action==='restore') await ref.update({ status:'intake' });
+    if(action==='restore')    await ref.update({ status:'intake' });
+
+    // Archive
     if(action==='to-archive'){
       const snap2 = await ref.get();
       const current = (snap2.exists && snap2.data().status) || '';
