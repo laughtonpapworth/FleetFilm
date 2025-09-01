@@ -69,6 +69,20 @@
       <!-- INTAKE LIST (just names, waiting for review) -->
   <section id="view-intake" class="card" aria-label="Film list">
   <h1>Film List</h1>
+    <div id="film-toolbar" class="toolbar">
+  <input id="filter-q" type="text" placeholder="Search title…">
+  <select id="filter-status">
+    <option value="">All stages</option>
+    <option value="review_basic">Basic Criteria</option>
+    <option value="uk_check">UK Distributor</option>
+    <option value="viewing">Viewing</option>
+    <option value="voting">Voting</option>
+    <option value="intake">Unprocessed</option>
+  </select>
+  <div class="spacer"></div>
+  <button id="filter-clear" class="btn btn-ghost">Clear</button>
+</div>
+
   <div class="list" id="intake-list"></div>
 </section>
 
