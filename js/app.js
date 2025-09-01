@@ -82,23 +82,7 @@ function initFirebase(){
   db = firebase.firestore();
 }
 
-function setView(name){
-  Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
-  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
-
-  Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
-  if(els.views[name]) els.views[name].classList.remove('hidden');
-
-  if(name==='intake') loadFilmList();  // Film List
-  if(name==='basic') loadBasic();
-  if(name==='uk') loadUk();
-  if(name==='holding') loadHolding();
-  if(name==='viewing') loadViewing();
-  if(name==='vote') loadVote();
-  if(name==='approved') loadApproved();
-  if(name==='discarded') loadDiscarded();
-  if(name==='archive') loadArchive();
-}
+function setView
 
 function routerFromHash(){
   const h = location.hash.replace('#','') || 'submit';
@@ -144,6 +128,13 @@ function attachHandlers(){
     try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
   });
   window.addEventListener('hashchange', routerFromHash);
+const mbar = document.getElementById('mobile-tabbar');
+if(mbar){
+  mbar.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-view]');
+    if(!btn) return;
+    location.hash = btn.dataset.view;
+  });
 }
 
 const filterState = { q:'', status:'' };
@@ -473,13 +464,22 @@ function nextActionFor(f){
 
 async function loadFilmList(){
   const docs = await fetchFilmListDocs();
+  let items = docs.map(d => ({ id:d.id, ...d.data() }));
+
+  // Apply filters
+  if(filterState.q){
+    items = items.filter(x => (x.title||'').toLowerCase().includes(filterState.q));
+  }
+  if(filterState.status){
+    items = items.filter(x => x.status === filterState.status);
+  }
+
   els.filmList.innerHTML = '';
-  if(!docs.length){
-    els.filmList.innerHTML = '<div class="notice">Empty. Use Submit to add a film.</div>';
+  if(!items.length){
+    els.filmList.innerHTML = '<div class="notice">No films match your filter.</div>';
     return;
   }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
+  items.forEach(f=>{
     const act = nextActionFor(f);
     const right = act ? `<button class="btn btn-primary" data-next="${f.id}">${act.label}</button>` : '';
     els.filmList.insertAdjacentHTML('beforeend', filmListCard(f, right));
@@ -501,6 +501,7 @@ async function loadFilmList(){
     });
   });
 }
+
 
 /* ---------- BASIC ---------- */
 async function loadBasic(){
@@ -669,28 +670,81 @@ async function checkAutoOutcome(filmId){
 /* ---------- APPROVED (Export + Archive) ---------- */
 async function loadApproved(){
   const docs = await fetchByStatus('approved');
+
+  // Header + export + toggle
   els.approvedList.innerHTML = `
-    <div class="actions" style="margin-bottom:12px;">
-      <button class="btn btn-primary" id="btn-export-approved">Export CSV</button>
+    <div class="section-head" id="approved-head">
+      <div class="section-title">Approved Films (${docs.length})</div>
+      <div>
+        <button class="btn btn-primary" id="btn-export-approved">Export CSV</button>
+        <button class="btn btn-ghost section-toggle" data-target="approved-body">
+          <span class="chev">▾</span> Collapse
+        </button>
+      </div>
     </div>
+    <div class="section-body" id="approved-body"></div>
   `;
   document.getElementById('btn-export-approved').addEventListener('click', exportApprovedCSV);
 
+  const body = document.getElementById('approved-body');
   if(!docs.length){
-    els.approvedList.insertAdjacentHTML('beforeend','<div class="notice">No approved films yet.</div>');
+    body.insertAdjacentHTML('beforeend','<div class="notice">No approved films yet.</div>');
+  }else{
+    docs.forEach(doc=>{
+      const f = { id: doc.id, ...doc.data() };
+      const actions = `
+        <div class="actions">
+          <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">Send back to Voting</button>
+          <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+          <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
+        </div>`;
+      body.insertAdjacentHTML('beforeend', detailCard(f, actions));
+    });
+    body.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  }
+
+  // Toggle
+  document.querySelector('#approved-head .section-toggle').addEventListener('click', (e)=>{
+    const head = document.getElementById('approved-head');
+    const tgt = document.getElementById(e.currentTarget.dataset.target);
+    head.classList.toggle('collapsed');
+    if(head.classList.contains('collapsed')) e.currentTarget.innerHTML = '<span class="chev">▸</span> Expand';
+    else e.currentTarget.innerHTML = '<span class="chev">▾</span> Collapse';
+  });
+}
+
+async function loadArchive(){
+  const docs = await fetchByStatus('archived');
+
+  els.archiveList.innerHTML = `
+    <div class="section-head" id="archive-head">
+      <div class="section-title">Archive (${docs.length})</div>
+      <button class="btn btn-ghost section-toggle" data-target="archive-body">
+        <span class="chev">▾</span> Collapse
+      </button>
+    </div>
+    <div class="section-body" id="archive-body"></div>
+  `;
+  const body = document.getElementById('archive-body');
+
+  if(!docs.length){
+    body.insertAdjacentHTML('beforeend','<div class="notice">No archived films yet.</div>');
     return;
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = `
-      <div class="actions">
-        <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">Send back to Voting</button>
-        <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
-    els.approvedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
+    const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
+    const right = origin ? `<span class="badge">${origin}</span>` : '';
+    body.insertAdjacentHTML('beforeend', filmListCard(f, right));
   });
-  els.approvedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+
+  document.querySelector('#archive-head .section-toggle').addEventListener('click', (e)=>{
+    const head = document.getElementById('archive-head');
+    const tgt = document.getElementById(e.currentTarget.dataset.target);
+    head.classList.toggle('collapsed');
+    if(head.classList.contains('collapsed')) e.currentTarget.innerHTML = '<span class="chev">▸</span> Expand';
+    else e.currentTarget.innerHTML = '<span class="chev">▾</span> Collapse';
+  });
 }
 
 function csvEscape(v){
@@ -906,6 +960,12 @@ async function adminAction(action, filmId){
 function boot(){
   initFirebase();
   attachHandlers();
+   function boot(){
+  initFirebase();
+  attachHandlers();
+  setupFilmListFilters(); // <-- add this
+  auth.onAuthStateChanged(async (u) => { ... });
+}
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
     if(!u){
