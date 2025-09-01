@@ -352,4 +352,5 @@ footer{
 @media (max-width:420px){
   .more-list{grid-template-columns:1fr}
 }
+[hidden]{ display:none !important; }
 
