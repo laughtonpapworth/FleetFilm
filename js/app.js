@@ -244,6 +244,21 @@ function showPicker(items){
   });
 }
 
+function statusChip(status){
+  const map = {
+    'intake':       { cls:'status-basic',    label:'Unprocessed', icon:'🆕' },
+    'review_basic': { cls:'status-basic',    label:'Basic Criteria', icon:'🧰' },
+    'uk_check':     { cls:'status-uk',       label:'UK Distributor', icon:'🔎' },
+    'viewing':      { cls:'status-viewing',  label:'Viewing', icon:'🎞️' },
+    'voting':       { cls:'status-voting',   label:'Voting', icon:'🗳️' },
+    'approved':     { cls:'status-approved', label:'Approved', icon:'✅' },
+    'discarded':    { cls:'status-discarded',label:'Discarded', icon:'🗑️' },
+    'archived':     { cls:'',                label:'Archived', icon:'📦' },
+  };
+  const m = map[status] || {cls:'', label:status || '—', icon:'•'};
+  return `<span class="status-chip ${m.cls}">${m.icon} ${m.label}</span>`;
+}
+
 /* ---------- Submit (Title + Year only; manual add allowed) ---------- */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
@@ -355,16 +370,19 @@ async function fetchFilmListDocs(){
 
 /* ---------- Rendering helpers ---------- */
 
-function filmListCard(f, rightHtml=''){
+function filmListCard(f, nextHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
   return `<div class="card">
     <div class="item">
       <div class="item-left">
         ${poster}
-        <div class="item-title">${f.title} ${year}</div>
+        <div>
+          <div class="item-title">${f.title} ${year}</div>
+          <div>${statusChip(f.status)}</div>
+        </div>
       </div>
-      <div class="item-right">${rightHtml}</div>
+      <div class="item-right">${nextHtml}</div>
     </div>
   </div>`;
 }
