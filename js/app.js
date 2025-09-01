@@ -70,6 +70,9 @@ const REQUIRED_BASIC_FIELDS = [
   'country'          // string
 ];
 
+/* ========= Film list filter (search + status) ========= */
+const filterState = { q:'', status:'' };
+
 /* ---------- Firebase ---------- */
 function initFirebase(){
   const cfg = window.__FLEETFILM__CONFIG;
@@ -82,7 +85,35 @@ function initFirebase(){
   db = firebase.firestore();
 }
 
-function setView
+/* ---------- View routing ---------- */
+function setView(name){
+  // Top nav highlight
+  Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
+  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
+
+  // Mobile tabbar highlight
+  const mbar = document.getElementById('mobile-tabbar');
+  if(mbar){
+    mbar.querySelectorAll('button[data-view]').forEach(b=>{
+      b.classList.toggle('active', b.dataset.view === name);
+    });
+  }
+
+  // Show one view
+  Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
+  if(els.views[name]) els.views[name].classList.remove('hidden');
+
+  // Load data for that view
+  if(name==='intake')   loadFilmList();
+  if(name==='basic')    loadBasic();
+  if(name==='uk')       loadUk();
+  if(name==='holding')  loadHolding();
+  if(name==='viewing')  loadViewing();
+  if(name==='vote')     loadVote();
+  if(name==='approved') loadApproved();
+  if(name==='discarded')loadDiscarded();
+  if(name==='archive')  loadArchive();
+}
 
 function routerFromHash(){
   const h = location.hash.replace('#','') || 'submit';
@@ -112,12 +143,17 @@ async function ensureUserDoc(u){
 }
 
 function attachHandlers(){
+  // Top nav
   Object.values(els.navButtons).forEach(btn => {
     if(!btn) return;
     btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
   });
+
+  // Sign out / submit
   els.signOut.addEventListener('click', () => auth.signOut());
   els.submitBtn.addEventListener('click', submitFilm);
+
+  // Auth buttons
   els.googleBtn?.addEventListener('click', async () => {
     try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }catch(e){ alert(e.message); }
   });
@@ -127,18 +163,22 @@ function attachHandlers(){
   els.emailCreateBtn?.addEventListener('click', async () => {
     try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
   });
+
+  // Router
   window.addEventListener('hashchange', routerFromHash);
-const mbar = document.getElementById('mobile-tabbar');
-if(mbar){
-  mbar.addEventListener('click', (e)=>{
-    const btn = e.target.closest('button[data-view]');
-    if(!btn) return;
-    location.hash = btn.dataset.view;
-  });
+
+  // Mobile tab bar
+  const mbar = document.getElementById('mobile-tabbar');
+  if(mbar){
+    mbar.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-view]');
+      if(!btn) return;
+      location.hash = btn.dataset.view;
+    });
+  }
 }
 
-const filterState = { q:'', status:'' };
-
+/* ---------- Film List: search & filter ---------- */
 function setupFilmListFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
@@ -159,7 +199,6 @@ function setupFilmListFilters(){
     loadFilmList();
   });
 }
-
 
 /* ---------- OMDb helpers ---------- */
 function getOmdbKey(){
@@ -259,11 +298,13 @@ function showPicker(items){
   });
 }
 
+/* ---------- Status chip ---------- */
 function statusChip(status){
   const map = {
     'intake':       { cls:'status-basic',    label:'Unprocessed', icon:'🆕' },
     'review_basic': { cls:'status-basic',    label:'Basic Criteria', icon:'🧰' },
     'uk_check':     { cls:'status-uk',       label:'UK Distributor', icon:'🔎' },
+    'holding':      { cls:'status-uk',       label:'Holding Pen', icon:'⏳' },
     'viewing':      { cls:'status-viewing',  label:'Viewing', icon:'🎞️' },
     'voting':       { cls:'status-voting',   label:'Voting', icon:'🗳️' },
     'approved':     { cls:'status-approved', label:'Approved', icon:'✅' },
@@ -323,7 +364,7 @@ async function submitFilm(){
     distStatus: '',
     posterUrl: '',
     imdbID: '',
-    // NEW program fields
+    // Programme fields (used in Archive)
     programStatus: '',          // '', 'queued', 'scheduled', 'screened'
     programDate: null,          // Timestamp or null
     programNotes: ''            // free text
@@ -428,7 +469,7 @@ function detailCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* ---------- Film List (ONE Next button that works) ---------- */
+/* ---------- Film List (single Next button) ---------- */
 
 function nextActionFor(f){
   switch(f.status){
@@ -501,7 +542,6 @@ async function loadFilmList(){
     });
   });
 }
-
 
 /* ---------- BASIC ---------- */
 async function loadBasic(){
@@ -713,6 +753,24 @@ async function loadApproved(){
   });
 }
 
+/* ---------- DISCARDED (Restore + Archive) ---------- */
+async function loadDiscarded(){
+  const docs = await fetchByStatus('discarded');
+  els.discardedList.innerHTML = '';
+  if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
+  docs.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const actions = `
+      <div class="actions">
+        <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Film List</button>
+        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
+      </div>`;
+    els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
+  });
+  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+/* ---------- ARCHIVE (Unarchive + Programme fields) ---------- */
 async function loadArchive(){
   const docs = await fetchByStatus('archived');
 
@@ -735,18 +793,90 @@ async function loadArchive(){
     const f = { id: doc.id, ...doc.data() };
     const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
     const right = origin ? `<span class="badge">${origin}</span>` : '';
-    body.insertAdjacentHTML('beforeend', filmListCard(f, right));
+
+    // Programme fields UI
+    const programStatus = f.programStatus || '';
+    const programDateISO = f.programDate?.toDate?.()
+      ? f.programDate.toDate().toISOString().slice(0,10)
+      : (typeof f.programDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.programDate) ? f.programDate : '');
+
+    const form = `
+      <div class="actions" style="margin-bottom:8px;">
+        ${right}
+        <button class="btn" data-act="unarchive" data-id="${f.id}">Unarchive</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          Programme Status
+          <select data-edit="programStatus" data-id="${f.id}">
+            <option value="" ${programStatus===''?'selected':''}>—</option>
+            <option value="queued" ${programStatus==='queued'?'selected':''}>Queued</option>
+            <option value="scheduled" ${programStatus==='scheduled'?'selected':''}>Scheduled</option>
+            <option value="screened" ${programStatus==='screened'?'selected':''}>Screened</option>
+          </select>
+        </label>
+        <label>
+          Programme Date
+          <input type="date" data-edit="programDate" data-id="${f.id}" value="${programDateISO || ''}">
+        </label>
+        <label class="span-2">
+          Notes
+          <textarea data-edit="programNotes" data-id="${f.id}" placeholder="Internal notes, venue, slot details…">${f.programNotes || ''}</textarea>
+        </label>
+        <div class="actions span-2">
+          <button class="btn btn-accent" data-act="program-save" data-id="${f.id}">Save</button>
+        </div>
+      </div>
+    `;
+
+    body.insertAdjacentHTML('beforeend', detailCard(f, form));
   });
 
+  // data-edit handlers in Archive
+  body.querySelectorAll('[data-edit]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const id = inp.dataset.id;
+      const field = inp.dataset.edit;
+      let val = inp.value;
+
+      if(field === 'programDate'){
+        // store as Firestore Timestamp when possible; fallback to null
+        if(val){
+          const ts = firebase.firestore.Timestamp.fromDate(new Date(val+'T00:00:00'));
+          await db.collection('films').doc(id).update({ programDate: ts });
+        }else{
+          await db.collection('films').doc(id).update({ programDate: null });
+        }
+        return;
+      }
+      await db.collection('films').doc(id).update({ [field]: val });
+    });
+  });
+
+  // buttons in Archive
+  body.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const id = b.dataset.id;
+      const act = b.dataset.act;
+      if(act === 'program-save'){
+        alert('Saved.');
+        return;
+      }
+      await adminAction(act, id);
+    });
+  });
+
+  // Toggle
   document.querySelector('#archive-head .section-toggle').addEventListener('click', (e)=>{
     const head = document.getElementById('archive-head');
-    const tgt = document.getElementById(e.currentTarget.dataset.target);
     head.classList.toggle('collapsed');
     if(head.classList.contains('collapsed')) e.currentTarget.innerHTML = '<span class="chev">▸</span> Expand';
     else e.currentTarget.innerHTML = '<span class="chev">▾</span> Collapse';
+    document.getElementById(e.currentTarget.dataset.target).classList.toggle('hidden');
   });
 }
 
+/* ---------- CSV helpers ---------- */
 function csvEscape(v){
   if(v === null || v === undefined) return '';
   const s = String(v);
@@ -792,107 +922,6 @@ async function exportApprovedCSV(){
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-/* ---------- DISCARDED (Restore + Archive) ---------- */
-async function loadDiscarded(){
-  const docs = await fetchByStatus('discarded');
-  els.discardedList.innerHTML = '';
-  if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const actions = `
-      <div class="actions">
-        <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Film List</button>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
-    els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
-  });
-  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
-}
-
-/* ---------- ARCHIVE (Unarchive + Program fields) ---------- */
-async function loadArchive(){
-  const docs = await fetchByStatus('archived');
-  els.archiveList.innerHTML = '';
-  if(!docs.length){ els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>'; return; }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
-    const right = origin ? `<span class="badge">${origin}</span>` : '';
-
-    // Program fields UI
-    const programStatus = f.programStatus || '';
-    const programDateISO = f.programDate?.toDate?.()
-      ? f.programDate.toDate().toISOString().slice(0,10)
-      : (typeof f.programDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.programDate) ? f.programDate : '');
-
-    const form = `
-      <div class="actions" style="margin-bottom:8px;">
-        ${right}
-        <button class="btn" data-act="unarchive" data-id="${f.id}">Unarchive</button>
-      </div>
-      <div class="form-grid">
-        <label>
-          Programme Status
-          <select data-edit="programStatus" data-id="${f.id}">
-            <option value="" ${programStatus===''?'selected':''}>—</option>
-            <option value="queued" ${programStatus==='queued'?'selected':''}>Queued</option>
-            <option value="scheduled" ${programStatus==='scheduled'?'selected':''}>Scheduled</option>
-            <option value="screened" ${programStatus==='screened'?'selected':''}>Screened</option>
-          </select>
-        </label>
-        <label>
-          Programme Date
-          <input type="date" data-edit="programDate" data-id="${f.id}" value="${programDateISO || ''}">
-        </label>
-        <label class="span-2">
-          Notes
-          <textarea data-edit="programNotes" data-id="${f.id}" placeholder="Internal notes, venue, slot details…">${f.programNotes || ''}</textarea>
-        </label>
-        <div class="actions span-2">
-          <button class="btn btn-accent" data-act="program-save" data-id="${f.id}">Save</button>
-        </div>
-      </div>
-    `;
-
-    els.archiveList.insertAdjacentHTML('beforeend', detailCard(f, form));
-  });
-
-  // data-edit handlers in Archive
-  els.archiveList.querySelectorAll('[data-edit]').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
-      const id = inp.dataset.id;
-      let field = inp.dataset.edit;
-      let val = inp.value;
-
-      if(field === 'programDate'){
-        // store as Firestore Timestamp when possible; fallback to ISO string if invalid/empty
-        if(val){
-          const ts = firebase.firestore.Timestamp.fromDate(new Date(val+'T00:00:00'));
-          await db.collection('films').doc(id).update({ programDate: ts });
-          return;
-        }else{
-          await db.collection('films').doc(id).update({ programDate: null });
-          return;
-        }
-      }
-      await db.collection('films').doc(id).update({ [field]: val });
-    });
-  });
-
-  // buttons in Archive
-  els.archiveList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click', async ()=>{
-      const id = b.dataset.id;
-      const act = b.dataset.act;
-      if(act === 'program-save'){
-        alert('Saved.');
-        return;
-      }
-      await adminAction(act, id);
-    });
-  });
 }
 
 /* ---------- Admin actions ---------- */
@@ -960,12 +989,7 @@ async function adminAction(action, filmId){
 function boot(){
   initFirebase();
   attachHandlers();
-   function boot(){
-  initFirebase();
-  attachHandlers();
-  setupFilmListFilters(); // <-- add this
-  auth.onAuthStateChanged(async (u) => { ... });
-}
+  setupFilmListFilters();
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
     if(!u){
