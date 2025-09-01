@@ -1,4 +1,4 @@
-/* Fleet Film App (Film List shows ONE working Next button; no 'not-in' query) 
+/* Fleet Film App
    Pipeline:
      intake -> review_basic -> uk_check -> holding -> viewing -> voting -> approved / discarded -> archived
 */
@@ -49,9 +49,6 @@ const els = {
   // submit form
   title: document.getElementById('f-title'),
   year: document.getElementById('f-year'),
-  distributor: document.getElementById('f-distributor'),
-  link: document.getElementById('f-link'),
-  synopsis: document.getElementById('f-synopsis'),
   submitBtn: document.getElementById('btn-submit-film'),
   submitMsg: document.getElementById('submit-msg'),
   // auth
@@ -262,27 +259,24 @@ async function submitFilm(){
     const candidates = (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
     const choice = await showPicker(candidates);
     if(choice.mode === 'cancel'){
-      // user backed out completely
       return;
     } else if(choice.mode === 'manual'){
-      picked = null; // proceed with manual minimal record
+      picked = null;
     } else if(choice.mode === 'pick' && choice.imdbID){
       picked = await omdbDetailsById(choice.imdbID);
     }
   }catch(e){
-    // On any failure, offer manual add
     const ok = confirm('Could not reach OMDb. Add the film manually?');
     if(!ok) return;
     picked = null;
   }
 
-  // Minimal base; Distributor/Link/Synopsis removed from submit page
   const base = {
     title,
     year: year,
-    distributor: '',   // left blank; can be edited later if you ever need it
-    link: '',          // left blank
-    synopsis: '',      // will be editable in Basic page
+    distributor: '',
+    link: '',
+    synopsis: '',
     status: 'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -296,12 +290,15 @@ async function submitFilm(){
     availability: '',
     criteria: { basic_pass: false, screen_program_pass: false },
     hasUkDistributor: null,
-    distStatus: '',    // NEW: distributor status lifecycle
+    distStatus: '',
     posterUrl: '',
-    imdbID: ''
+    imdbID: '',
+    // NEW program fields
+    programStatus: '',          // '', 'queued', 'scheduled', 'screened'
+    programDate: null,          // Timestamp or null
+    programNotes: ''            // free text
   };
 
-  // If we did get OMDb details, populate helpful fields
   if(picked){
     let runtimeMinutes = null;
     if(picked.Runtime && /\d+/.test(picked.Runtime)){
@@ -315,11 +312,7 @@ async function submitFilm(){
     base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
     base.imdbID = picked.imdbID || '';
     if(runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
-
-    // We removed synopsis from submit UI; still okay to prefill if OMDb has it
     if(picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
-
-    // Normalise title/year if OMDb returns nicer casing or exact year
     if(picked.Title) base.title = picked.Title;
     if(picked.Year && /^\d{4}$/.test(picked.Year)) base.year = parseInt(picked.Year,10);
   }
@@ -346,14 +339,12 @@ async function fetchByStatus(status){
 }
 
 async function fetchFilmListDocs(){
-  // Explicitly fetch each status that belongs on Film List
   const statuses = ['intake','review_basic','uk_check','holding','viewing','voting'];
   const all = [];
   for(const s of statuses){
     const docs = await fetchByStatus(s);
     all.push(...docs);
   }
-  // Sort newest first
   all.sort((a,b)=>{
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
@@ -408,7 +399,6 @@ function detailCard(f, actionsHtml=''){
 /* ---------- Film List (ONE Next button that works) ---------- */
 
 function nextActionFor(f){
-  // Returns {label, type, handler}
   switch(f.status){
     case 'intake':
       return { label: 'Move to Basic Criteria', type: 'update', handler: async (ref)=>{ await ref.update({ status:'review_basic' }); } };
@@ -457,7 +447,6 @@ async function loadFilmList(){
     btn.addEventListener('click', async ()=>{
       const id = btn.getAttribute('data-next');
       const ref = db.collection('films').doc(id);
-      // Re-evaluate latest status before acting
       const snap = await ref.get();
       if(!snap.exists) return;
       const f = snap.data();
@@ -541,8 +530,8 @@ async function loadUk(){
 /* ---------- HOLDING ---------- */
 async function loadHolding(){
   const docs = await fetchByStatus('holding');
-  els.holdingList && (els.holdingList.innerHTML = '');
-  if(!els.holdingList) return; // if HTML not added yet, skip
+  if(!els.holdingList) return;
+  els.holdingList.innerHTML = '';
   if(!docs.length){ els.holdingList.innerHTML = '<div class="notice">Holding is empty.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
@@ -727,7 +716,7 @@ async function loadDiscarded(){
   els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- ARCHIVE ---------- */
+/* ---------- ARCHIVE (Unarchive + Program fields) ---------- */
 async function loadArchive(){
   const docs = await fetchByStatus('archived');
   els.archiveList.innerHTML = '';
@@ -736,7 +725,78 @@ async function loadArchive(){
     const f = { id: doc.id, ...doc.data() };
     const origin = f.archivedFrom === 'approved' ? 'Approved' : (f.archivedFrom === 'discarded' ? 'Discarded' : '');
     const right = origin ? `<span class="badge">${origin}</span>` : '';
-    els.archiveList.insertAdjacentHTML('beforeend', filmListCard(f, right));
+
+    // Program fields UI
+    const programStatus = f.programStatus || '';
+    const programDateISO = f.programDate?.toDate?.()
+      ? f.programDate.toDate().toISOString().slice(0,10)
+      : (typeof f.programDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.programDate) ? f.programDate : '');
+
+    const form = `
+      <div class="actions" style="margin-bottom:8px;">
+        ${right}
+        <button class="btn" data-act="unarchive" data-id="${f.id}">Unarchive</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          Programme Status
+          <select data-edit="programStatus" data-id="${f.id}">
+            <option value="" ${programStatus===''?'selected':''}>—</option>
+            <option value="queued" ${programStatus==='queued'?'selected':''}>Queued</option>
+            <option value="scheduled" ${programStatus==='scheduled'?'selected':''}>Scheduled</option>
+            <option value="screened" ${programStatus==='screened'?'selected':''}>Screened</option>
+          </select>
+        </label>
+        <label>
+          Programme Date
+          <input type="date" data-edit="programDate" data-id="${f.id}" value="${programDateISO || ''}">
+        </label>
+        <label class="span-2">
+          Notes
+          <textarea data-edit="programNotes" data-id="${f.id}" placeholder="Internal notes, venue, slot details…">${f.programNotes || ''}</textarea>
+        </label>
+        <div class="actions span-2">
+          <button class="btn btn-accent" data-act="program-save" data-id="${f.id}">Save</button>
+        </div>
+      </div>
+    `;
+
+    els.archiveList.insertAdjacentHTML('beforeend', detailCard(f, form));
+  });
+
+  // data-edit handlers in Archive
+  els.archiveList.querySelectorAll('[data-edit]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const id = inp.dataset.id;
+      let field = inp.dataset.edit;
+      let val = inp.value;
+
+      if(field === 'programDate'){
+        // store as Firestore Timestamp when possible; fallback to ISO string if invalid/empty
+        if(val){
+          const ts = firebase.firestore.Timestamp.fromDate(new Date(val+'T00:00:00'));
+          await db.collection('films').doc(id).update({ programDate: ts });
+          return;
+        }else{
+          await db.collection('films').doc(id).update({ programDate: null });
+          return;
+        }
+      }
+      await db.collection('films').doc(id).update({ [field]: val });
+    });
+  });
+
+  // buttons in Archive
+  els.archiveList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const id = b.dataset.id;
+      const act = b.dataset.act;
+      if(act === 'program-save'){
+        alert('Saved.');
+        return;
+      }
+      await adminAction(act, id);
+    });
   });
 }
 
@@ -750,11 +810,8 @@ async function adminAction(action, filmId){
       const snap = await ref.get();
       const f = snap.data();
 
-      // specific constraints
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
       const okLang = (f.language || '').trim().length > 0;
-
-      // generic required fields
       const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
         const v = f[k];
         return v == null || (typeof v === 'string' && v.trim().length === 0);
@@ -769,7 +826,7 @@ async function adminAction(action, filmId){
       await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
     }
 
-    // NEW: Distributor status marks
+    // Distributor status marks
     if(action==='dist-pending')   await ref.update({ distStatus:'pending' });
     if(action==='dist-likely')    await ref.update({ distStatus:'likely' });
     if(action==='dist-unlikely')  await ref.update({ distStatus:'unlikely' });
@@ -786,13 +843,20 @@ async function adminAction(action, filmId){
     if(action==='to-discard') await ref.update({ status:'discarded' });
     if(action==='restore')    await ref.update({ status:'intake' });
 
-    // Archive
+    // Archive / Unarchive
     if(action==='to-archive'){
       const snap2 = await ref.get();
       const current = (snap2.exists && snap2.data().status) || '';
       const origin = (current === 'approved' || current === 'discarded') ? current : '';
       await ref.update({ status:'archived', archivedFrom: origin });
     }
+    if(action==='unarchive'){
+      const snap3 = await ref.get();
+      const data = snap3.data() || {};
+      const origin = data.archivedFrom || 'intake';
+      await ref.update({ status: origin, archivedFrom: firebase.firestore.FieldValue.delete() });
+    }
+
     routerFromHash();
   }catch(e){ alert(e.message); }
 }
