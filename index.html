@@ -170,6 +170,32 @@
   <button data-view="vote"><div class="ico">🗳️</div><div>Voting</div></button>
   <button data-view="approved"><div class="ico">✅</div><div>Approved</div></button>
 </nav>
+<!-- Mobile Tab Bar -->
+<div id="mobile-tabbar" class="mobile-tabbar">
+  <button class="tabbtn" data-view="submit" aria-label="Submit">➕<span>Submit</span></button>
+  <button class="tabbtn" data-view="intake" aria-label="Film List">🎬<span>Films</span></button>
+  <button class="tabbtn" id="mb-more" aria-haspopup="true" aria-expanded="false" aria-controls="more-menu">☰<span>More</span></button>
+</div>
+
+<!-- Mobile 'More' Sheet -->
+<div id="more-menu" class="more-overlay" hidden>
+  <div class="more-panel" role="dialog" aria-modal="true" aria-label="More pages">
+    <div class="more-head">
+      <div class="more-title">Go to…</div>
+      <button class="btn btn-ghost" id="more-close" aria-label="Close">✕</button>
+    </div>
+    <div class="more-list">
+      <button class="more-link" data-view="basic">🧰 Basic Criteria</button>
+      <button class="more-link" data-view="uk">🔎 UK Distributor</button>
+      <button class="more-link" data-view="holding">⏳ Holding Pen</button>
+      <button class="more-link" data-view="viewing">🎞️ Viewing</button>
+      <button class="more-link" data-view="vote">🗳️ Voting</button>
+      <button class="more-link" data-view="approved">✅ Approved</button>
+      <button class="more-link" data-view="discarded">🗑️ Discarded</button>
+      <button class="more-link" data-view="archive">📦 Archive</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
