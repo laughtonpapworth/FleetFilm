@@ -16,25 +16,28 @@
   <script defer src="js/app.js"></script>
 </head>
 <body>
-  <header class="header" aria-label="Application header">
-    <div class="brand" aria-label="Brand">
-      <div class="logo" aria-hidden="true">FF</div>
-      Fleet Film
-    </div>
-    <div class="nav" id="nav" aria-label="Navigation" role="navigation">
-       <button id="nav-submit" class="active" data-view="submit">Submit</button>
-      <button id="nav-intake" data-view="intake">Film List</button>
-      <button id="nav-basic" data-view="basic" aria-label="Basic Criteria">Basic Criteria</button>
-      <button id="nav-uk" data-view="uk" aria-label="UK Distributor">UK Distributor</button>
-      <button id="nav-holding" data-view="holding">Holding</button>
-      <button id="nav-viewing" data-view="viewing" aria-label="Viewing Queue">Viewing</button>
-      <button id="nav-vote" data-view="vote" aria-label="Voting">Voting</button>
-      <button id="nav-approved" data-view="approved" aria-label="Approved Films">Approved</button>
-      <button id="nav-discarded" data-view="discarded" aria-label="Discarded Films">Discarded</button>
-      <button id="nav-archive" data-view="archive">Archive</button>
-      <button id="btn-signout" class="btn btn-ghost" aria-label="Sign out">Sign out</button>
-    </div>
-  </header>
+<header class="header">
+  <div class="brand">
+    <img class="logo" src="img/FFLogo.png" alt="Fleet Film">
+    <span class="title">FLEET FILM</span>
+  </div>
+
+  <nav id="nav" class="nav">
+    <!-- Order: Submit first (as requested) -->
+    <button id="nav-submit"   data-view="submit">Submit</button>
+    <button id="nav-intake"   data-view="intake">Film List</button>
+    <button id="nav-basic"    data-view="basic">Basic Criteria</button>
+    <button id="nav-uk"       data-view="uk">UK Distributor</button>
+    <button id="nav-holding"  data-view="holding">Holding Pen</button>
+    <button id="nav-viewing"  data-view="viewing">Viewing</button>
+    <button id="nav-vote"     data-view="vote">Voting</button>
+    <button id="nav-approved" data-view="approved">Approved</button>
+    <button id="nav-discarded" data-view="discarded">Discarded</button>
+    <button id="nav-archive"  data-view="archive">Archive</button>
+  </nav>
+
+  <button id="btn-signout" class="btn btn-ghost">Sign out</button>
+</header>
 
   <main class="container">
     <div id="signed-out" class="center">
