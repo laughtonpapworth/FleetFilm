@@ -178,6 +178,43 @@ function attachHandlers(){
   }
 }
 
+  // Mobile "More" sheet
+  const moreBtn = document.getElementById('mb-more');
+  const moreMenu = document.getElementById('more-menu');
+  const moreClose = document.getElementById('more-close');
+
+  function openMore(){
+    moreMenu.hidden = false;
+    moreBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeMore(){
+    moreMenu.hidden = true;
+    moreBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if(moreBtn && moreMenu){
+    moreBtn.addEventListener('click', ()=>{
+      if(moreMenu.hidden) openMore(); else closeMore();
+    });
+    moreClose?.addEventListener('click', closeMore);
+    // click outside panel closes
+    moreMenu.addEventListener('click', (e)=>{
+      if(e.target === moreMenu) closeMore();
+    });
+    // Esc closes
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape' && !moreMenu.hidden) closeMore();
+    });
+    // handle navigation inside the sheet
+    moreMenu.addEventListener('click', (e)=>{
+      const link = e.target.closest('.more-link');
+      if(!link) return;
+      closeMore();
+      location.hash = link.dataset.view;
+    });
+  }
+
+
 /* ---------- Film List: search & filter ---------- */
 function setupFilmListFilters(){
   const q = document.getElementById('filter-q');
