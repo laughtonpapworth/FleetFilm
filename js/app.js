@@ -372,13 +372,12 @@ function filmListCard(f, rightHtml=''){
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  const distBadge = f.distStatus ? `<span class="badge">Distributor: ${f.distStatus}</span>` : '';
-  return `<div class="card">
-    <div class="item">
+  return `<div class="card detail-card">
+    <div class="item item--split">
       <div class="item-left">
         ${poster}
         <div>
-          <div class="item-title">${f.title} ${year} ${distBadge}</div>
+          <div class="item-title">${f.title} ${year}</div>
           <div class="kv">
             <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
             <div>Language:</div><div>${f.language || '—'}</div>
