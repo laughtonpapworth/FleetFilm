@@ -1008,6 +1008,93 @@ async function adminAction(action, filmId){
   }catch(e){ alert(e.message); }
 }
 
+// --- PWA Install Button (mobile only) ---
+let deferredInstallPrompt = null;
+
+function isStandalone(){
+  // Android/desktop PWA
+  const mql = window.matchMedia('(display-mode: standalone)');
+  // iOS PWA
+  const iosStandalone = window.navigator.standalone === true;
+  return (mql && mql.matches) || iosStandalone;
+}
+function isMobile(){
+  return window.innerWidth <= 760; // match your mobile breakpoint
+}
+function showInstallButton(yes){
+  const btn = document.getElementById('btn-install');
+  if(!btn) return;
+  btn.hidden = !yes;
+}
+
+function setupInstall(){
+  const btn = document.getElementById('btn-install');
+  if(!btn) return;
+
+  // Default hidden unless we later decide to show it
+  showInstallButton(false);
+
+  // If already installed or not mobile: never show
+  if(isStandalone() || !isMobile()){
+    showInstallButton(false);
+  }
+
+  // Listen for Chrome/Android prompt availability
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    // Stop Chrome from showing its mini-info bar
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    // Only show on mobile & not installed
+    if(isMobile() && !isStandalone()){
+      showInstallButton(true);
+    }
+  });
+
+  // On click, either trigger prompt (Android/Chrome) or show iOS help
+  btn.addEventListener('click', async ()=>{
+    if(deferredInstallPrompt){
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      // Hide after user decides
+      showInstallButton(false);
+      deferredInstallPrompt = null;
+      return;
+    }
+    // No prompt (likely iOS Safari) – show quick instructions
+    alert(
+      'Install on iPhone/iPad:\n\n' +
+      '1) Tap the Share button (square with ↑) in Safari\n' +
+      '2) Choose “Add to Home Screen”.'
+    );
+  });
+
+  // Hide if installed
+  window.addEventListener('appinstalled', ()=>{
+    showInstallButton(false);
+    deferredInstallPrompt = null;
+  });
+
+  // Safety: hide if you resize up to desktop; re-check on resize
+  window.addEventListener('resize', ()=>{
+    if(!isMobile() || isStandalone()){
+      showInstallButton(false);
+    }else if(deferredInstallPrompt){
+      showInstallButton(true);
+    }
+  });
+
+  // Safety: on load, hide if already standalone
+  window.addEventListener('load', ()=>{
+    if(isStandalone()){
+      showInstallButton(false);
+    }
+  });
+}
+
+// Call this once during startup (after DOM is ready)
+document.addEventListener('DOMContentLoaded', setupInstall);
+
+
 /* ---------- Boot ---------- */
 function boot(){
   initFirebase();
