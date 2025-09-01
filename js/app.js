@@ -61,6 +61,15 @@ const els = {
 
 const state = { user: null, role: 'member' };
 
+/* ========= NEW: Required fields for Basic ========= */
+const REQUIRED_BASIC_FIELDS = [
+  'runtimeMinutes',  // number; must be <= 150
+  'language',        // string
+  'ukAgeRating',     // string (U, PG, 12A, 12, 15, 18, R18, NR)
+  'genre',           // string
+  'country'          // string
+];
+
 /* ---------- Firebase ---------- */
 function initFirebase(){
   const cfg = window.__FLEETFILM__CONFIG;
@@ -403,11 +412,13 @@ function nextActionFor(f){
         const x = snap.data();
         const okRuntime = (x.runtimeMinutes != null) && (x.runtimeMinutes <= 150);
         const okLang = (x.language || '').trim().length > 0;
-        if(!okRuntime || !okLang){
-          alert('Fill in Basic: runtime ≤ 150 and language required.');
-          location.hash = 'basic';
-          return;
-        }
+        const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
+          const v = x[k];
+          return v == null || (typeof v === 'string' && v.trim().length === 0);
+        });
+        if(!okRuntime){ alert('Runtime must be 2h30 (150 min) or less.'); location.hash='basic'; return; }
+        if(!okLang){ alert('Please capture Language.'); location.hash='basic'; return; }
+        if(missing.length){ alert('Complete Basic fields: ' + missing.join(', ')); location.hash='basic'; return; }
         await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
       }};
     case 'uk_check':
@@ -701,10 +712,23 @@ async function adminAction(action, filmId){
     if(action==='basic-validate'){
       const snap = await ref.get();
       const f = snap.data();
+
+      // specific constraints
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
       const okLang = (f.language || '').trim().length > 0;
+
+      // generic required fields
+      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
+        const v = f[k];
+        return v == null || (typeof v === 'string' && v.trim().length === 0);
+      });
+
       if(!okRuntime){ alert('Runtime must be 2h30 (150 min) or less.'); return; }
       if(!okLang){ alert('Please capture Language.'); return; }
+      if(missing.length){
+        alert('Complete Basic fields: ' + missing.join(', '));
+        return;
+      }
       await ref.update({ 'criteria.basic_pass': true, status:'uk_check' });
     }
     if(action==='uk-yes') await ref.update({ hasUkDistributor:true, status:'viewing' });
@@ -713,8 +737,8 @@ async function adminAction(action, filmId){
     if(action==='to-discard') await ref.update({ status:'discarded' });
     if(action==='restore') await ref.update({ status:'intake' });
     if(action==='to-archive'){
-      const snap = await ref.get();
-      const current = (snap.exists && snap.data().status) || '';
+      const snap2 = await ref.get();
+      const current = (snap2.exists && snap2.data().status) || '';
       const origin = (current === 'approved' || current === 'discarded') ? current : '';
       await ref.update({ status:'archived', archivedFrom: origin });
     }
