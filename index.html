@@ -127,21 +127,24 @@
   <div class="list" id="nextprog-list"></div>
 </section>
 
+<!-- CALENDAR (dedicated page) -->
 <section id="view-calendar" class="card hidden" aria-label="Calendar">
-  <div class="section-head">
-    <div class="section-title">Calendar</div>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn btn-ghost" id="cal-back">← Back to Viewing</button>
-      <button class="btn btn-ghost" id="cal-prev">◀</button>
-      <div id="cal-title" class="badge">Month YYYY</div>
-      <button class="btn btn-ghost" id="cal-next">▶</button>
+  <h1>Calendar</h1>
+
+  <div class="card" style="padding:14px">
+    <div class="cal-head">
+      <button id="cal-back" class="btn btn-ghost">← Back to Viewing</button>
+      <div class="cal-title" id="cal-title">Month YYYY</div>
+      <div style="display:flex; gap:6px">
+        <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
+        <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
+      </div>
     </div>
+    <div class="cal-grid" id="cal-grid"></div>
   </div>
 
-  <div id="cal-grid" class="cal-grid"></div>
-
-  <!-- Schedule editor (used when coming from "Set date & time") -->
-  <div class="card" id="cal-editor" style="margin-top:12px;">
+  <!-- Simple editor: prefilled when arriving from Viewing > Set date & time -->
+  <div class="card" style="padding:14px; margin-top:10px">
     <div class="form-grid">
       <label>Date
         <input id="cal-date" type="date">
@@ -149,15 +152,16 @@
       <label>Time
         <input id="cal-time" type="time" placeholder="19:30">
       </label>
-      <label class="span-2">Location (read-only here; set on Viewing)
+      <label class="span-2">Location (read only here; set on Viewing)
         <input id="cal-loc" type="text" disabled>
       </label>
       <div class="actions span-2">
-        <button class="btn btn-primary" id="cal-save">Save</button>
+        <button id="cal-save" class="btn btn-primary">Save</button>
       </div>
     </div>
   </div>
 </section>
+
 
 
 
