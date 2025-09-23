@@ -151,10 +151,24 @@
 
 
       <!-- VIEWING QUEUE -->
-      <section id="view-viewing" class="card hidden" aria-label="Viewing queue">
-        <h1>Viewing Queue</h1>
-        <div class="list" id="viewing-list"></div>
-      </section>
+    <!-- VIEWING QUEUE -->
+<section id="view-viewing" class="card hidden" aria-label="Viewing queue">
+  <h1>Viewing Queue</h1>
+
+  <!-- Calendar card -->
+  <div id="view-cal-card" class="card" style="padding:14px;">
+    <div class="cal-head">
+      <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
+      <div class="cal-title" id="cal-title">Month YYYY</div>
+      <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+
+  <!-- (Optional) plain list of viewing films (unscheduled etc.) -->
+  <div class="list" id="viewing-list"></div>
+</section>
+
 
       <!-- VOTING -->
       <section id="view-vote" class="card hidden" aria-label="Voting">
