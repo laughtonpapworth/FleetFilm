@@ -77,6 +77,50 @@ const REQUIRED_BASIC_FIELDS = [
   'country'          // string
 ];
 
+/* ===== Viewing calendar state ===== */
+const calState = (() => {
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth() }; // month: 0..11
+})();
+
+function monthLabel(y, m){
+  return new Date(y, m, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+}
+
+/* Monday-first helper (Mon=0 ... Sun=6) */
+function weekdayIndexMondayFirst(jsDay /*0 Sun..6 Sat*/){
+  return (jsDay + 6) % 7;
+}
+
+/* Build calendar HTML with Monday as first day */
+function renderCalendarHTML(year, month, eventsByISO = {}){
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstJS = new Date(year, month, 1).getDay(); // 0 Sun..6 Sat
+  const startPad = weekdayIndexMondayFirst(firstJS); // 0..6 (Mon-based)
+  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  let html = '';
+  // Weekday headers
+  for(const wd of weekdays){
+    html += `<div class="cal-wd">${wd}</div>`;
+  }
+  // Leading empties
+  for(let i=0;i<startPad;i++){
+    html += `<div class="cal-cell empty"></div>`;
+  }
+  // Days
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const items = eventsByISO[iso] || [];
+    html += `<div class="cal-cell">
+      <div class="cal-day">${d}</div>
+      ${items.map(t=>`<div class="cal-pill">${t}</div>`).join('')}
+    </div>`;
+  }
+  return html;
+}
+
+
 /* =================== Firebase =================== */
 function initFirebase(){
   const cfg = window.__FLEETFILM__CONFIG;
@@ -618,6 +662,50 @@ async function loadViewing(){
     els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
   }
+
+   /* ===== Viewing calendar state ===== */
+const calState = (() => {
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth() }; // month: 0..11
+})();
+
+function monthLabel(y, m){
+  return new Date(y, m, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+}
+
+/* Monday-first helper (Mon=0 ... Sun=6) */
+function weekdayIndexMondayFirst(jsDay /*0 Sun..6 Sat*/){
+  return (jsDay + 6) % 7;
+}
+
+/* Build calendar HTML with Monday as first day */
+function renderCalendarHTML(year, month, eventsByISO = {}){
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstJS = new Date(year, month, 1).getDay(); // 0 Sun..6 Sat
+  const startPad = weekdayIndexMondayFirst(firstJS); // 0..6 (Mon-based)
+  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  let html = '';
+  // Weekday headers
+  for(const wd of weekdays){
+    html += `<div class="cal-wd">${wd}</div>`;
+  }
+  // Leading empties
+  for(let i=0;i<startPad;i++){
+    html += `<div class="cal-cell empty"></div>`;
+  }
+  // Days
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const items = eventsByISO[iso] || [];
+    html += `<div class="cal-cell">
+      <div class="cal-day">${d}</div>
+      ${items.map(t=>`<div class="cal-pill">${t}</div>`).join('')}
+    </div>`;
+  }
+  return html;
+}
+
 
   // Load locations for dropdown
   const locSnap = await db.collection('locations').orderBy('name').get();
