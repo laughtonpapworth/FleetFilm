@@ -31,7 +31,8 @@
     <button id="nav-viewing"   data-view="viewing">Viewing</button>
     <button id="nav-vote"      data-view="vote">Voting</button>
     <button id="nav-uk"        data-view="uk">UK Distributor</button>
-    <button id="nav-approved"  data-view="approved">Approved</button>
+    <button id="nav-green" data-view="green">Green List</button>
+    <button id="nav-nextprog" data-view="nextprog">Next Programme</button>
     <button id="nav-discarded" data-view="discarded">Discarded</button>
     <button id="nav-archive"   data-view="archive">Archive</button>
     <button id="nav-calendar" data-view="calendar">Calendar</button>
@@ -121,6 +122,11 @@
       <div id="holding-list" class="list"></div>
     </section>
 
+    <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
+  <h1>Next Programme</h1>
+  <div class="list" id="nextprog-list"></div>
+</section>
+
 <section id="view-calendar" class="card hidden" aria-label="Calendar">
   <div class="section-head">
     <div class="section-title">Calendar</div>
@@ -194,10 +200,11 @@
     </section>
 
     <!-- Future pages (kept hidden; not yet wired in app.js) -->
-    <section id="view-green" class="card hidden" aria-label="Green list">
-      <h1>Green List</h1>
-      <div class="list" id="green-list"></div>
-    </section>
+   
+<section id="view-green" class="card hidden" aria-label="Green list">
+  <h1>Green List</h1>
+  <div class="list" id="green-list"></div>
+</section>
 
     <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
       <h1>Next Programme</h1>
