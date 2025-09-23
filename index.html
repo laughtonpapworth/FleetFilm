@@ -119,34 +119,38 @@
       <div id="holding-list" class="list"></div>
     </section>
 
-    <!-- CALENDAR (separate page) -->
 <section id="view-calendar" class="card hidden" aria-label="Calendar">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-    <h1>Calendar</h1>
-    <div class="actions">
-      <button id="cal-back" class="btn btn-ghost">← Back to Viewing</button>
+  <div class="section-head">
+    <div class="section-title">Calendar</div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn btn-ghost" id="cal-back">← Back to Viewing</button>
+      <button class="btn btn-ghost" id="cal-prev">◀</button>
+      <div id="cal-title" class="badge">Month YYYY</div>
+      <button class="btn btn-ghost" id="cal-next">▶</button>
     </div>
   </div>
 
-  <!-- Context editor (only shown when setting date/time for one film) -->
-  <div id="cal-editor" class="card hidden" style="margin-top:8px;">
-    <h3 id="cal-editor-title" style="margin:4px 0 10px 0;">Schedule Viewing</h3>
+  <div id="cal-grid" class="cal-grid"></div>
+
+  <!-- Schedule editor (appears when coming from "Set date & time") -->
+  <div class="card" id="cal-editor" style="margin-top:12px;">
     <div class="form-grid">
       <label>Date
-        <input id="cal-ed-date" type="date">
+        <input id="cal-date" type="date">
       </label>
       <label>Time
-        <input id="cal-ed-time" type="time" step="900">
+        <input id="cal-time" type="time" placeholder="19:30">
       </label>
-      <label class="span-2">Location
-        <select id="cal-ed-location"></select>
+      <label class="span-2">Location (read-only here; set on Viewing)
+        <input id="cal-loc" type="text" disabled>
       </label>
       <div class="actions span-2">
-        <button id="cal-ed-save" class="btn btn-primary">Save</button>
-        <button id="cal-ed-cancel" class="btn btn-ghost">Cancel</button>
+        <button class="btn btn-primary" id="cal-save">Save</button>
       </div>
     </div>
   </div>
+</section>
+
 
   <!-- Month header -->
   <div id="view-cal-card" class="card" style="padding:14px;margin-top:10px;">
