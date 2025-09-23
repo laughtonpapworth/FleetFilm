@@ -1,11 +1,12 @@
-/* Fleet Film App – new flow & features
-   New pipeline:
+/* Fleet Film App – flow & fixes
+   Pipeline:
      intake -> review_basic -> viewing -> voting -> uk_check -> greenlist -> next_programme -> archived
-   (Discarded is possible from several points.)
+   (Discarded possible from several points.)
 */
 
 let app, auth, db;
 
+/* =================== DOM refs =================== */
 const els = {
   signedOut: document.getElementById('signed-out'),
   signedIn: document.getElementById('signed-in'),
@@ -13,7 +14,7 @@ const els = {
   signOut: document.getElementById('btn-signout'),
 
   // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'), // reused id
+  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -22,12 +23,10 @@ const els = {
   nextProgList: document.getElementById('nextprog-list'),
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
-  locationsList: document.getElementById('locations-list'),
-  calendarList: document.getElementById('calendar-list'),
 
   // VIEWS
   views: {
-    pending: document.getElementById('view-intake'), // now called Pending Films in UI
+    pending: document.getElementById('view-intake'), // now “Pending Films”
     submit: document.getElementById('view-submit'),
     basic: document.getElementById('view-basic'),
     viewing: document.getElementById('view-viewing'),
@@ -37,8 +36,6 @@ const els = {
     nextprog: document.getElementById('view-nextprog'),
     discarded: document.getElementById('view-discarded'),
     archive: document.getElementById('view-archive'),
-    locations: document.getElementById('view-locations'),
-    calendar: document.getElementById('view-calendar'),
   },
 
   // NAV BUTTONS
@@ -53,8 +50,6 @@ const els = {
     nextprog: document.getElementById('nav-nextprog'),
     discarded: document.getElementById('nav-discarded'),
     archive: document.getElementById('nav-archive'),
-    locations: document.getElementById('nav-locations'),
-    calendar: document.getElementById('nav-calendar'),
   },
 
   // SUBMIT
@@ -73,10 +68,16 @@ const els = {
 
 const state = { user: null, role: 'member' };
 
-/* ==== Required Basic fields ==== */
-const REQUIRED_BASIC_FIELDS = ['runtimeMinutes','language','ukAgeRating','genre','country'];
+/* ========= Required fields for Basic ========= */
+const REQUIRED_BASIC_FIELDS = [
+  'runtimeMinutes',  // number; must be <= 150
+  'language',        // string
+  'ukAgeRating',     // string
+  'genre',           // string
+  'country'          // string
+];
 
-/* ---------- Firebase ---------- */
+/* =================== Firebase =================== */
 function initFirebase(){
   const cfg = window.__FLEETFILM__CONFIG;
   if(!cfg || !cfg.apiKey) {
@@ -104,14 +105,11 @@ function setView(name){
   if(name==='nextprog') loadNextProgramme();
   if(name==='discarded') loadDiscarded();
   if(name==='archive') loadArchive();
-  if(name==='locations') loadLocations();
-  if(name==='calendar') loadCalendar();
 }
 
 function routerFromHash(){
   const h = location.hash.replace('#','') || 'submit';
-  // map legacy hashes
-  const map = { intake:'pending', approved:'green' };
+  const map = { intake:'pending', approved:'green' }; // legacy -> new
   setView(map[h] || h);
 }
 
@@ -121,7 +119,7 @@ function showSignedIn(on){
   els.nav.classList.toggle('hidden', !on);
 }
 
-// Create user doc if missing
+// Create a user doc if missing
 async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
   const snap = await ref.get();
@@ -153,7 +151,6 @@ function attachHandlers(){
   els.emailCreateBtn?.addEventListener('click', async () => {
     try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
   });
-
   window.addEventListener('hashchange', routerFromHash);
 
   // mobile tabbar (if present)
@@ -169,12 +166,10 @@ function attachHandlers(){
   setupPendingFilters();
 }
 
-/* ---------- Filters (Pending) ---------- */
+/* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
 
 function setupPendingFilters(){
-  const wrap = document.getElementById('film-toolbar');
-  if(!wrap) return;
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
   const clr = document.getElementById('filter-clear');
@@ -183,7 +178,7 @@ function setupPendingFilters(){
   if(clr){ clr.addEventListener('click', ()=>{ filterState.q=''; filterState.status=''; if(q) q.value=''; if(s) s.value=''; loadPending(); }); }
 }
 
-/* ---------- OMDb helpers ---------- */
+/* =================== OMDb helpers =================== */
 function getOmdbKey(){
   return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
 }
@@ -223,7 +218,7 @@ function mapMpaaToUk(mpaa){
   return s;
 }
 
-/* ---------- Pickers (OMDb + move) ---------- */
+/* =================== Picker (OMDb) =================== */
 function showPicker(items){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -281,12 +276,11 @@ function showPicker(items){
   });
 }
 
-/* ---------- Submit (Title+Year, manual allowed) ---------- */
+/* =================== Submit (Title+Year; manual ok) =================== */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   const yearStr = (els.year.value||'').trim();
   const year = parseInt(yearStr, 10);
-
   if(!title){ alert('Title required'); return; }
   if(!year || yearStr.length !== 4){ alert('Enter a 4-digit Year (e.g. 1994)'); return; }
 
@@ -295,13 +289,9 @@ async function submitFilm(){
     const res = await omdbSearch(title, year);
     const candidates = (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
     const choice = await showPicker(candidates);
-    if(choice.mode === 'cancel'){
-      return;
-    } else if(choice.mode === 'manual'){
-      picked = null;
-    } else if(choice.mode === 'pick' && choice.imdbID){
-      picked = await omdbDetailsById(choice.imdbID);
-    }
+    if(choice.mode === 'cancel'){ return; }
+    if(choice.mode === 'manual'){ picked = null; }
+    if(choice.mode === 'pick' && choice.imdbID){ picked = await omdbDetailsById(choice.imdbID); }
   }catch{
     const ok = confirm('Could not reach OMDb. Add the film manually?');
     if(!ok) return;
@@ -363,7 +353,7 @@ async function submitFilm(){
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Fetch helpers ---------- */
+/* =================== Fetch helpers =================== */
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
   const docs = snap.docs.sort((a, b) => {
@@ -374,9 +364,9 @@ async function fetchByStatus(status){
   return docs;
 }
 
-/* ---------- Rendering helpers ---------- */
+/* =================== Rendering helpers =================== */
 
-// Pending card: picture + title + actions only
+// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -391,7 +381,7 @@ function pendingCard(f, actionsHtml=''){
   </div>`;
 }
 
-// Detailed card (other pages)
+// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -418,16 +408,13 @@ function detailCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* ---------- Pending Films ---------- */
+/* =================== Pending Films =================== */
 async function loadPending(){
-  // Pending = statuses before/including Voting (no UK check here)
   const statuses = ['intake','review_basic','viewing','voting'];
   let items = [];
   for(const s of statuses){ items.push(...await fetchByStatus(s)); }
-  // sort newest
   items.sort((a,b)=> (b.data().createdAt?.toMillis?.()||0) - (a.data().createdAt?.toMillis?.()||0));
 
-  // filters
   let films = items.map(d=>({ id:d.id, ...d.data() }));
   if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
   if(filterState.status){ films = films.filter(x => x.status === filterState.status); }
@@ -436,7 +423,6 @@ async function loadPending(){
   if(!films.length){ els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
 
   films.forEach(f=>{
-    // ONE Move button (next) + Archive
     const actions = `
       <button class="btn btn-primary" data-next="${f.id}">Next Stage</button>
       <button class="btn" data-archive="${f.id}">Archive</button>
@@ -444,7 +430,6 @@ async function loadPending(){
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  // Next Stage handler
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.next;
@@ -459,7 +444,6 @@ async function loadPending(){
     });
   });
 
-  // Archive handler
   els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.archive;
@@ -467,14 +451,13 @@ async function loadPending(){
       const snap = await ref.get();
       if(!snap.exists) return;
       const cur = snap.data().status || '';
-      const origin = (cur==='greenlist' || cur==='discarded') ? cur : '';
-      await ref.update({ status:'archived', archivedFrom: origin });
+      await ref.update({ status:'archived', archivedFrom: cur || '' });
       routerFromHash();
     });
   });
 }
 
-// Move to next stage per the new flow + validations
+// Move to next stage (validates Basic → Viewing)
 async function nextStage(ref, f){
   switch(f.status){
     case 'intake':
@@ -486,8 +469,8 @@ async function nextStage(ref, f){
         const v = f[k];
         return v == null || (typeof v === 'string' && v.trim().length === 0);
       });
-      if(!okRuntime){ throw new Error('Runtime must be 150 min or less.'); }
-      if(missing.length){ throw new Error('Complete Basic fields: '+missing.join(', ')); }
+      if(!okRuntime) throw new Error('Runtime must be 150 min or less.');
+      if(missing.length) throw new Error('Complete Basic fields: '+missing.join(', '));
       await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
       return;
     }
@@ -495,7 +478,6 @@ async function nextStage(ref, f){
       await ref.update({ status:'voting' });
       return;
     case 'voting':
-      // If they press Next from voting, just open the voting page to finish votes
       location.hash = 'vote';
       return;
     default:
@@ -503,7 +485,7 @@ async function nextStage(ref, f){
   }
 }
 
-/* ---------- BASIC ---------- */
+/* =================== BASIC =================== */
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
@@ -514,7 +496,7 @@ async function loadBasic(){
       <div class="form-grid">
         <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
         <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
-        <label>UK Age Rating<input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, R18, NR" /></label>
+        <label>UK Age Rating<input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, NR" /></label>
         <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
         <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
         <label>Disk Available?
@@ -543,24 +525,113 @@ async function loadBasic(){
   els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- VIEWING (schedule date+location) ---------- */
+/* =================== VIEWING (inline calendar + location add) =================== */
+
+// month offset for calendar (0 = current month)
+let calOffset = 0;
+
+function renderCalendarHTML(filmsWithDates){
+  // Determine target month
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth()+calOffset, 1);
+  const year = first.getFullYear();
+  const month = first.getMonth();
+  const monthName = first.toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+
+  // days in month & start weekday
+  const startWeekday = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+
+  // build a map date-> sessions
+  const map = {};
+  filmsWithDates.forEach(f=>{
+    const d = f.viewingDate.toDate();
+    if(d.getFullYear()===year && d.getMonth()===month){
+      const key = d.getDate();
+      map[key] = map[key] || [];
+      map[key].push(f);
+    }
+  });
+
+  // grid: 7 columns, fill with blanks then days
+  const cells = [];
+  for(let i=0;i<startWeekday;i++){ cells.push('<div class="cal-cell empty"></div>'); }
+  for(let day=1; day<=daysInMonth; day++){
+    const sessions = map[day] || [];
+    const items = sessions.map(s=>`<div class="cal-pill">${s.title}${s.viewingLocationName?` • ${s.viewingLocationName}`:''}</div>`).join('');
+    cells.push(`<div class="cal-cell"><div class="cal-day">${day}</div>${items}</div>`);
+  }
+
+  return `
+    <div class="card" id="view-cal-card">
+      <div class="cal-head">
+        <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month">◀</button>
+        <div class="cal-title">${monthName}</div>
+        <button class="btn btn-ghost" id="cal-next" aria-label="Next month">▶</button>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-wd">Sun</div><div class="cal-wd">Mon</div><div class="cal-wd">Tue</div><div class="cal-wd">Wed</div><div class="cal-wd">Thu</div><div class="cal-wd">Fri</div><div class="cal-wd">Sat</div>
+        ${cells.join('')}
+      </div>
+    </div>
+  `;
+}
+
+function hookCalendarHandlers(filmsForCalendar){
+  const prev = document.getElementById('cal-prev');
+  const next = document.getElementById('cal-next');
+  if(prev) prev.addEventListener('click', ()=>{
+    calOffset -= 1;
+    // re-render calendar only
+    renderViewingCalendar(filmsForCalendar);
+  });
+  if(next) next.addEventListener('click', ()=>{
+    calOffset += 1;
+    renderViewingCalendar(filmsForCalendar);
+  });
+}
+
+function renderViewingCalendar(filmsForCalendar){
+  const card = document.getElementById('view-cal-card');
+  if(!card) return; // first render will insert below
+  card.outerHTML = renderCalendarHTML(filmsForCalendar);
+  hookCalendarHandlers(filmsForCalendar);
+}
+
 async function loadViewing(){
+  // Films currently in 'viewing'
   const docs = await fetchByStatus('viewing');
+  // Films-with-dates (for calendar) – show anything scheduled, regardless of status? You asked "when & where viewings are happening";
+  // we'll include ANY with viewingDate set.
+  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
+  const scheduled = scheduledSnap.docs
+    .map(d=>({ id:d.id, ...d.data() }))
+    .filter(f=>f.viewingDate?.toDate);
+
   els.viewingList.innerHTML = '';
-  if(!docs.length){ els.viewingList.innerHTML = '<div class="notice">Viewing queue is empty.</div>'; return; }
+
+  // Insert calendar first
+  els.viewingList.insertAdjacentHTML('beforeend', renderCalendarHTML(scheduled));
+  hookCalendarHandlers(scheduled);
+
+  if(!docs.length){
+    els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
+    return;
+  }
 
   // Load locations for dropdown
   const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  let locs = locSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
+  // Card per film (with date + dropdown + “Add new location…”)
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const dateISO = f.viewingDate?.toDate?.() ? f.viewingDate.toDate().toISOString().slice(0,10) : '';
 
-    const options = ['','-'].map(()=>null); // just to keep code readable
-    const locOptions = ['<option value="">Select location…</option>']
-      .concat(locs.map(l=>`<option value="${l.id}" ${f.viewingLocationId===l.id?'selected':''}>${l.name}</option>`))
-      .join('');
+    const locOptions =
+      `<option value="">Select location…</option>` +
+      locs.map(l=>`<option value="${l.id}" ${f.viewingLocationId===l.id?'selected':''}>${l.name}</option>`).join('') +
+      `<option value="__add">+ Add new location…</option>`;
 
     const actions = `
       <div class="form-grid">
@@ -581,7 +652,7 @@ async function loadViewing(){
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
-  // save handlers
+  // Save handlers (date + location + add-new modal)
   els.viewingList.querySelectorAll('[data-edit]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
@@ -595,18 +666,48 @@ async function loadViewing(){
         }else{
           await db.collection('films').doc(id).update({ viewingDate: null });
         }
+        // refresh calendar
+        loadViewing();
         return;
       }
 
       if(field === 'viewingLocationId'){
-        // also store name for easier listing
+        if(val === '__add'){
+          // open modal to add; on success select it
+          const newLoc = await showAddLocationModal();
+          if(newLoc){
+            // re-fetch locations
+            const lsnap = await db.collection('locations').orderBy('name').get();
+            const dropdown = inp;
+            dropdown.innerHTML =
+              `<option value="">Select location…</option>` +
+              lsnap.docs.map(d=>`<option value="${d.id}" ${d.id===newLoc.id?'selected':''}>${d.data().name}</option>`).join('') +
+              `<option value="__add">+ Add new location…</option>`;
+
+            await db.collection('films').doc(id).update({
+              viewingLocationId: newLoc.id,
+              viewingLocationName: newLoc.name || ''
+            });
+            // refresh calendar (location name appears)
+            loadViewing();
+          }else{
+            // revert to previous selected (do nothing)
+            inp.value = f.viewingLocationId || '';
+          }
+          return;
+        }
+
+        // normal selection
         if(!val){
           await db.collection('films').doc(id).update({ viewingLocationId:'', viewingLocationName:'' });
+          loadViewing();
           return;
         }
         const loc = await db.collection('locations').doc(val).get();
         const name = loc.exists ? (loc.data().name || '') : '';
         await db.collection('films').doc(id).update({ viewingLocationId: val, viewingLocationName: name });
+        // refresh calendar to reflect name
+        loadViewing();
         return;
       }
 
@@ -617,12 +718,101 @@ async function loadViewing(){
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- VOTING (4 YES to proceed; show who voted) ---------- */
+/* ---------- Add Location Modal (with postcode lookup) ---------- */
+function showAddLocationModal(){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-head">
+        <h2>Add new location</h2>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="span-2">Name
+          <input id="loc-name" type="text" placeholder="e.g. Church Hall">
+        </label>
+        <label class="span-2">Address
+          <input id="loc-addr" type="text" placeholder="Street, town">
+        </label>
+        <label>Postcode
+          <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">
+        </label>
+        <label>City
+          <input id="loc-city" type="text" placeholder="(optional)">
+        </label>
+        <div class="actions span-2">
+          <button class="btn btn-ghost" id="loc-lookup">Lookup postcode</button>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" id="loc-save">Save</button>
+        </div>
+        <div id="loc-msg" class="notice hidden"></div>
+      </div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    function close(result){ document.body.removeChild(overlay); resolve(result); }
+
+    modal.querySelector('#loc-cancel').addEventListener('click', ()=>close(null));
+
+    modal.querySelector('#loc-lookup').addEventListener('click', async ()=>{
+      const pc = (document.getElementById('loc-postcode').value || '').trim();
+      if(!pc){ toast('Enter a postcode first'); return; }
+      try{
+        const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`);
+        const data = await r.json();
+        if(data && data.status===200){
+          const res = data.result;
+          document.getElementById('loc-city').value = res.admin_district || res.parish || res.region || '';
+          toast(`Found: ${res.country}${res.admin_district? ' • '+res.admin_district:''}`);
+        }else{
+          toast('No match for that postcode');
+        }
+      }catch{
+        toast('Lookup failed (network)');
+      }
+    });
+
+    modal.querySelector('#loc-save').addEventListener('click', async ()=>{
+      const name = (document.getElementById('loc-name').value||'').trim();
+      const address = (document.getElementById('loc-addr').value||'').trim();
+      const postcode = (document.getElementById('loc-postcode').value||'').trim();
+      const city = (document.getElementById('loc-city').value||'').trim();
+      if(!name){ toast('Name required'); return; }
+      try{
+        const ref = await db.collection('locations').add({
+          name, address, postcode, city,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        close({ id: ref.id, name });
+      }catch(e){
+        toast(e.message || 'Could not save');
+      }
+    });
+
+    function toast(msg){
+      const m = modal.querySelector('#loc-msg');
+      m.textContent = msg;
+      m.classList.remove('hidden');
+      setTimeout(()=>m.classList.add('hidden'), 2000);
+    }
+  });
+}
+
+/* =================== VOTING (4 YES to proceed; show who voted) =================== */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
   if(!docs.length){ els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
   const my = state.user.uid;
+
+  // simple in-memory cache for user display names
+  const nameCache = {};
 
   for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
@@ -637,21 +827,20 @@ async function loadVote(){
     });
 
     // lookup user names
-    const names = {};
-    if(voters.length){
-      const userIds = voters.map(v=>v.uid);
-      // fetch each (simple; we don't have a batch get in compat)
-      await Promise.all(userIds.map(async uid=>{
-        const u = await db.collection('users').doc(uid).get();
-        names[uid] = u.exists ? (u.data().displayName || u.data().email || uid) : uid;
-      }));
-    }
-
-    const listVotes = voters.map(v=>{
-      const who = names[v.uid] || v.uid;
-      const what = v.value===1 ? 'Yes' : v.value===-1 ? 'No' : '—';
-      return `<div class="badge">${who}: ${what}</div>`;
-    }).join(' ');
+    const listVotes = await (async ()=>{
+      if(!voters.length) return '';
+      const parts = [];
+      for(const v of voters){
+        if(!nameCache[v.uid]){
+          const u = await db.collection('users').doc(v.uid).get();
+          nameCache[v.uid] = u.exists ? (u.data().displayName || u.data().email || v.uid) : v.uid;
+        }
+        const who = nameCache[v.uid];
+        const what = v.value===1 ? 'Yes' : v.value===-1 ? 'No' : '—';
+        parts.push(`<span class="badge">${who}: ${what}</span>`);
+      }
+      return parts.join(' ');
+    })();
 
     // my current vote
     let myVoteVal = 0;
@@ -664,7 +853,7 @@ async function loadVote(){
         <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
       </div>
       <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>
-      <div style="margin-top:6px">${listVotes || ''}</div>
+      <div style="margin-top:6px">${listVotes}</div>
       <div class="actions" style="margin-top:8px">
         <button class="btn" data-act="to-discard" data-id="${f.id}">Discard</button>
       </div>
@@ -704,7 +893,7 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-/* ---------- UK CHECK (comes after Voting now) ---------- */
+/* =================== UK CHECK (after Voting) =================== */
 async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
@@ -722,7 +911,7 @@ async function loadUk(){
   els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- GREEN LIST (formerly Approved) ---------- */
+/* =================== GREEN LIST =================== */
 async function loadGreen(){
   const docs = await fetchByStatus('greenlist');
   els.greenList.innerHTML = '';
@@ -741,7 +930,7 @@ async function loadGreen(){
   els.greenList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- NEXT PROGRAMME ---------- */
+/* =================== NEXT PROGRAMME =================== */
 async function loadNextProgramme(){
   const docs = await fetchByStatus('next_programme');
   els.nextProgList.innerHTML = `
@@ -779,7 +968,7 @@ async function archiveAllNextProg(){
   loadNextProgramme();
 }
 
-/* ---------- DISCARDED ---------- */
+/* =================== DISCARDED =================== */
 async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
@@ -796,7 +985,7 @@ async function loadDiscarded(){
   els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* ---------- ARCHIVE ---------- */
+/* =================== ARCHIVE =================== */
 async function loadArchive(){
   const docs = await fetchByStatus('archived');
   els.archiveList.innerHTML = '';
@@ -809,86 +998,27 @@ async function loadArchive(){
   });
 }
 
-/* ---------- LOCATIONS (manage list) ---------- */
-async function loadLocations(){
-  els.locationsList.innerHTML = `
-    <div class="card">
-      <div class="form-grid">
-        <label>Name <input id="loc-name" type="text" placeholder="e.g. Church Hall"></label>
-        <label>Address <input id="loc-addr" type="text" placeholder="Optional"></label>
-        <div class="actions span-2">
-          <button class="btn btn-primary" id="btn-add-loc">Add location</button>
-        </div>
-      </div>
-    </div>
-    <div class="list" id="loc-list"></div>
-  `;
-
-  document.getElementById('btn-add-loc').addEventListener('click', async ()=>{
-    const name = (document.getElementById('loc-name').value||'').trim();
-    const address = (document.getElementById('loc-addr').value||'').trim();
-    if(!name){ alert('Name required'); return; }
-    await db.collection('locations').add({ name, address, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-    loadLocations();
-  });
-
-  const snap = await db.collection('locations').orderBy('name').get();
-  const list = document.getElementById('loc-list');
-  if(snap.empty){
-    list.innerHTML = '<div class="notice">No locations yet.</div>';
-    return;
-  }
-  snap.forEach(d=>{
-    const loc = { id:d.id, ...d.data() };
-    list.insertAdjacentHTML('beforeend', `
-      <div class="card">
-        <div class="item">
-          <div class="item-left">
-            <div class="item-title">${loc.name}</div>
-            ${loc.address ? `<div class="kv"><div>Address:</div><div>${loc.address}</div></div>`:''}
-          </div>
-          <div class="item-right">
-            <button class="btn btn-danger" data-del="${loc.id}">Delete</button>
-          </div>
-        </div>
-      </div>
-    `);
-  });
-
-  list.querySelectorAll('button[data-del]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      if(!confirm('Delete this location?')) return;
-      await db.collection('locations').doc(btn.dataset.del).delete();
-      loadLocations();
-    });
-  });
-}
-
-/* ---------- CALENDAR (upcoming viewing sessions) ---------- */
-async function loadCalendar(){
-  els.calendarList.innerHTML = '';
-  // Any film with a viewingDate set (regardless of status), show chronologically upcoming first
-  const snap = await db.collection('films').where('viewingDate','!=', null).get();
-  if(snap.empty){ els.calendarList.innerHTML = '<div class="notice">No scheduled viewings.</div>'; return; }
-  const films = snap.docs.map(d=>({ id:d.id, ...d.data() }))
-    .filter(f=>f.viewingDate?.toDate)
-    .sort((a,b)=> a.viewingDate.toDate() - b.viewingDate.toDate());
-
-  films.forEach(f=>{
-    const date = f.viewingDate.toDate().toDateString();
-    const where = f.viewingLocationName || '—';
-    const actions = `<span class="badge">${date} • ${where}</span>`;
-    els.calendarList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
-  });
-}
-
-/* ---------- Admin actions ---------- */
+/* =================== Admin actions =================== */
 async function adminAction(action, filmId){
   const ref = db.collection('films').doc(filmId);
   try{
     if(action==='to-discard') await ref.update({ status:'discarded' });
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
+
+    // Basic validate (FIX: this was missing previously)
+    if(action==='basic-validate'){
+      const snap = await ref.get();
+      const f = snap.data() || {};
+      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
+        const v = f[k];
+        return v == null || (typeof v === 'string' && v.trim().length === 0);
+      });
+      if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
+      if(missing.length){ alert('Complete Basic fields: ' + missing.join(', ')); return; }
+      await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
+    }
 
     // UK decisions
     if(action==='uk-yes'){ 
@@ -912,7 +1042,7 @@ async function adminAction(action, filmId){
   }catch(e){ alert(e.message); }
 }
 
-/* ---------- Boot ---------- */
+/* =================== Boot =================== */
 function boot(){
   initFirebase();
   attachHandlers();
