@@ -23,19 +23,22 @@
     
   </div>
 
-  <nav id="nav" class="nav">
-    <!-- Order: Submit first (as requested) -->
-    <button id="nav-submit"   data-view="submit">Submit</button>
-    <button id="nav-intake"   data-view="intake">Film List</button>
-    <button id="nav-basic"    data-view="basic">Basic Criteria</button>
-    <button id="nav-uk"       data-view="uk">UK Distributor</button>
-    <button id="nav-holding"  data-view="holding">Holding Pen</button>
-    <button id="nav-viewing"  data-view="viewing">Viewing</button>
-    <button id="nav-vote"     data-view="vote">Voting</button>
-    <button id="nav-approved" data-view="approved">Approved</button>
-    <button id="nav-discarded" data-view="discarded">Discarded</button>
-    <button id="nav-archive"  data-view="archive">Archive</button>
-  </nav>
+<nav id="nav" class="nav">
+  <!-- Submit first -->
+  <button id="nav-submit"    data-view="submit">Submit</button>
+  <button id="nav-intake"    data-view="pending">Pending Films</button>
+  <button id="nav-basic"     data-view="basic">Basic Criteria</button>
+  <button id="nav-viewing"   data-view="viewing">Viewing</button>
+  <button id="nav-vote"      data-view="vote">Voting</button>
+  <button id="nav-uk"        data-view="uk">UK Distributor</button>
+  <button id="nav-green"     data-view="green">Green List</button>
+  <button id="nav-nextprog"  data-view="nextprog">Next Programme</button>
+  <button id="nav-discarded" data-view="discarded">Discarded</button>
+  <button id="nav-archive"   data-view="archive">Archive</button>
+  <button id="nav-locations" data-view="locations">Viewing Locations</button>
+  <button id="nav-calendar"  data-view="calendar">Calendar</button>
+</nav>
+
 
   <button id="btn-signout" class="btn btn-ghost">Sign out</button>
 </header>
@@ -67,21 +70,24 @@
 
     <div id="signed-in" class="hidden">
       <!-- INTAKE LIST (just names, waiting for review) -->
-  <section id="view-intake" class="card" aria-label="Film list">
-  <h1>Film List</h1>
-    <div id="film-toolbar" class="toolbar">
-  <input id="filter-q" type="text" placeholder="Search title…">
-  <select id="filter-status">
-    <option value="">All stages</option>
-    <option value="review_basic">Basic Criteria</option>
-    <option value="uk_check">UK Distributor</option>
-    <option value="viewing">Viewing</option>
-    <option value="voting">Voting</option>
-    <option value="intake">Unprocessed</option>
-  </select>
-  <div class="spacer"></div>
-  <button id="filter-clear" class="btn btn-ghost">Clear</button>
-</div>
+ <section id="view-intake" class="card" aria-label="Pending films">
+  <h1>Pending Films</h1>
+  <!-- keep your toolbar if present -->
+  <div id="film-toolbar" class="toolbar">
+    <input id="filter-q" type="text" placeholder="Search title…">
+    <select id="filter-status">
+      <option value="">All stages</option>
+      <option value="intake">Unprocessed</option>
+      <option value="review_basic">Basic Criteria</option>
+      <option value="viewing">Viewing</option>
+      <option value="voting">Voting</option>
+    </select>
+    <div class="spacer"></div>
+    <button id="filter-clear" class="btn btn-ghost">Clear</button>
+  </div>
+  <div class="list" id="intake-list"></div>
+</section>
+
 
   <div class="list" id="intake-list"></div>
 </section>
@@ -119,6 +125,30 @@
   <h1>Holding Pen</h1>
   <div id="holding-list" class="list"></div>
 </section>
+
+      <section id="view-green" class="card hidden" aria-label="Green list">
+  <h1>Green List</h1>
+  <div class="list" id="green-list"></div>
+</section>
+
+      <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
+  <h1>Next Programme</h1>
+  <div class="list" id="nextprog-list"></div>
+</section>
+
+      <section id="view-calendar" class="card hidden" aria-label="Calendar">
+  <h1>Calendar</h1>
+  <div class="list" id="calendar-list"></div>
+</section>
+
+
+      <section id="view-locations" class="card hidden" aria-label="Viewing Locations">
+  <h1>Viewing Locations</h1>
+  <div id="locations-list"></div>
+</section>
+
+
+
 
       <!-- VIEWING QUEUE -->
       <section id="view-viewing" class="card hidden" aria-label="Viewing queue">
