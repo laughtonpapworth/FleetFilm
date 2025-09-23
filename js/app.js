@@ -467,52 +467,48 @@ function detailCard(f, actionsHtml=''){
 
 /* =================== Pending Films =================== */
 async function loadPending(){
-  const statuses = ['intake','review_basic','viewing','voting'];
-  let items = [];
-  for(const s of statuses){ items.push(...await fetchByStatus(s)); }
-  items.sort((a,b)=> (b.data().createdAt?.toMillis?.()||0) - (a.data().createdAt?.toMillis?.()||0));
-
-  let films = items.map(d=>({ id:d.id, ...d.data() }));
-  if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
-  if(filterState.status){ films = films.filter(x => x.status === filterState.status); }
+  // Only films that haven’t started the flow
+  const docs = await fetchByStatus('intake');
 
   els.pendingList.innerHTML = '';
-  if(!films.length){ els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
+  if(!docs.length){
+    els.pendingList.innerHTML = '<div class="notice">No films awaiting Basic Criteria.</div>';
+    return;
+  }
+
+  const films = docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a,b)=> (b.createdAt?.toMillis?.()||0) - (a.createdAt?.toMillis?.()||0));
 
   films.forEach(f=>{
     const actions = `
-      <button class="btn btn-primary" data-next="${f.id}">Next Stage</button>
-      <button class="btn" data-archive="${f.id}">Archive</button>
+      <button class="btn btn-primary" data-basic="${f.id}">Basic Criteria</button>
+      <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
     `;
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
+  // → Basic Criteria
+  els.pendingList.querySelectorAll('button[data-basic]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.next;
-      const ref = db.collection('films').doc(id);
-      const snap = await ref.get();
-      if(!snap.exists) return;
-      const f = snap.data();
-      try{
-        await nextStage(ref, f);
-        routerFromHash();
-      }catch(e){ alert(e.message); }
+      const id = btn.dataset.basic;
+      await db.collection('films').doc(id).update({ status:'review_basic' });
+      // Remove from Pending immediately and (optionally) take user to Basic page
+      loadPending();
+      location.hash = 'basic';
     });
   });
 
-  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
+  // Discard (available at this stage too)
+  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.archive;
-      const ref = db.collection('films').doc(id);
-      const snap = await ref.get();
-      if(!snap.exists) return;
-      const cur = snap.data().status || '';
-      await ref.update({ status:'archived', archivedFrom: cur || '' });
-      routerFromHash();
+      const id = btn.dataset.discard;
+      await db.collection('films').doc(id).update({ status:'discarded' });
+      loadPending();
     });
   });
 }
+
 
 // Move to next stage (validates Basic → Viewing)
 async function nextStage(ref, f){
@@ -881,12 +877,14 @@ async function loadUk(){
   if(!docs.length){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const actions = `
-      <div class="actions">
-        <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor Confirmed ✓</button>
-        <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
-      </div>
-    `;
+ const actions = `
+  <div class="actions">
+    <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor Confirmed ✓</button>
+    <button class="btn btn-warn" data-act="uk-no"  data-id="${f.id}">No Distributor</button>
+    <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+  </div>
+`;
+
     els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
@@ -900,12 +898,15 @@ async function loadGreen(){
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
-    const actions = `
-      <div class="actions">
-        <span class="badge">Green since: ${greenAt}</span>
-        <button class="btn btn-primary" data-act="to-nextprog" data-id="${f.id}">→ Next Programme</button>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
+const actions = `
+  <div class="actions">
+    <span class="badge">Green since: ${greenAt}</span>
+    <button class="btn btn-primary" data-act="to-nextprog" data-id="${f.id}">→ Next Programme</button>
+    <button class="btn"           data-act="to-archive"  data-id="${f.id}">Archive</button>
+    <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+  </div>
+`;
+
     els.greenList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.greenList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
