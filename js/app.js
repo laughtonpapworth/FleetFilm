@@ -999,19 +999,20 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
-    // Basic validate
-    if(action==='basic-validate'){
-      const snap = await ref.get();
-      const f = snap.data() || {};
-      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
-        const v = f[k];
-        return v == null || (typeof v === 'string' && v.trim().length === 0);
-      });
-      if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
-      if(missing.length){ alert('Complete Basic fields: ' + missing.join(', ')); return; }
-      await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
-    }
+ // inside adminAction(action, filmId)
+if(action==='basic-validate'){
+  const snap = await ref.get();
+  const f = snap.data() || {};
+  const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+  const required = ['runtimeMinutes','language','ukAgeRating','genre','country'];
+  const missing = required.filter(k=>{
+    const v = f[k]; return v == null || (typeof v === 'string' && v.trim().length === 0);
+  });
+  if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
+  if(missing.length){ alert('Complete Basic fields: '+missing.join(', ')); return; }
+  await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
+}
+
 
     // UK decisions
     if(action==='uk-yes'){ 
