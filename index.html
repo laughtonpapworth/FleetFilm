@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-     <meta name="theme-color" content="#1f2937"/>
+  <meta name="theme-color" content="#1f2937"/>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="icon" href="img/FFIcon.png" sizes="32x32" type="image/png">
   <title>Fleet Film</title>
+  <!-- bust cache once if needed: ?v=3 -->
   <link rel="stylesheet" href="css/styles.css">
   <!-- Firebase (compat for simplicity) -->
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -20,193 +21,179 @@
 <header class="header">
   <div class="brand">
     <img class="logo" src="img/FFLogo.png" alt="Fleet Film">
-    
   </div>
 
-<nav id="nav" class="nav">
-  <!-- Submit first -->
-  <button id="nav-submit"    data-view="submit">Submit</button>
-  <button id="nav-intake"    data-view="pending">Pending Films</button>
-  <button id="nav-basic"     data-view="basic">Basic Criteria</button>
-  <button id="nav-viewing"   data-view="viewing">Viewing</button>
-  <button id="nav-vote"      data-view="vote">Voting</button>
-  <button id="nav-uk"        data-view="uk">UK Distributor</button>
-  <button id="nav-green"     data-view="green">Green List</button>
-  <button id="nav-nextprog"  data-view="nextprog">Next Programme</button>
-  <button id="nav-discarded" data-view="discarded">Discarded</button>
-  <button id="nav-archive"   data-view="archive">Archive</button>
-  <button id="nav-locations" data-view="locations">Viewing Locations</button>
-  <button id="nav-calendar"  data-view="calendar">Calendar</button>
-</nav>
-
+  <!-- Top navigation (labels updated, view keys unchanged) -->
+  <nav id="nav" class="nav">
+    <button id="nav-submit"    data-view="submit">Submit</button>
+    <button id="nav-intake"    data-view="intake">Pending Films</button>
+    <button id="nav-basic"     data-view="basic">Basic Criteria</button>
+    <button id="nav-viewing"   data-view="viewing">Viewing</button>
+    <button id="nav-vote"      data-view="vote">Voting</button>
+    <button id="nav-uk"        data-view="uk">UK Distributor</button>
+    <button id="nav-approved"  data-view="approved">Approved</button>
+    <button id="nav-discarded" data-view="discarded">Discarded</button>
+    <button id="nav-archive"   data-view="archive">Archive</button>
+  </nav>
 
   <button id="btn-signout" class="btn btn-ghost">Sign out</button>
 </header>
 
-  <main class="container">
-    <div id="signed-out" class="center">
-      <div class="card signin-card" role="region" aria-label="Sign in">
-        <h1>Welcome to Fleet Film</h1>
-        <p style="font-size:18px; line-height:1.4;">
-          Secure sign-in required. This site works on phones and can be installed like an app.
-        </p>
-        <div class="actions">
-          <button id="btn-google" class="btn btn-primary big" aria-label="Sign in with Google">Sign in with Google</button>
-        </div>
-        <div class="hr"></div>
-        <label for="email" class="large-label">Email</label>
-        <input id="email" type="email" placeholder="you@example.com" autocomplete="username" />
-        <label for="password" class="large-label">Password</label>
-        <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
-        <div class="actions">
-          <button id="btn-email-signin" class="btn btn-accent big" aria-label="Sign in with email">Sign in</button>
-          <button id="btn-email-create" class="btn btn-ghost big" aria-label="Create account">Create account</button>
-        </div>
-        <div class="notice" role="status">
-          Need help? Ask an admin to invite you. Big buttons, simple screens, large text.
-        </div>
+<main class="container">
+  <!-- Signed out -->
+  <div id="signed-out" class="center">
+    <div class="card signin-card" role="region" aria-label="Sign in">
+      <h1>Welcome to Fleet Film</h1>
+      <p style="font-size:18px; line-height:1.4;">
+        Secure sign-in required. This site works on phones and can be installed like an app.
+      </p>
+      <div class="actions">
+        <button id="btn-google" class="btn btn-primary big" aria-label="Sign in with Google">Sign in with Google</button>
+      </div>
+      <div class="hr"></div>
+      <label for="email" class="large-label">Email</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="username" />
+      <label for="password" class="large-label">Password</label>
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+      <div class="actions">
+        <button id="btn-email-signin" class="btn btn-accent big" aria-label="Sign in with email">Sign in</button>
+        <button id="btn-email-create" class="btn btn-ghost big" aria-label="Create account">Create account</button>
+      </div>
+      <div class="notice" role="status">
+        Need help? Ask an admin to invite you. Big buttons, simple screens, large text.
       </div>
     </div>
-
-    <div id="signed-in" class="hidden">
-      <!-- INTAKE LIST (just names, waiting for review) -->
- <section id="view-intake" class="card" aria-label="Pending films">
-  <h1>Pending Films</h1>
-  <!-- keep your toolbar if present -->
-  <div id="film-toolbar" class="toolbar">
-    <input id="filter-q" type="text" placeholder="Search title…">
-    <select id="filter-status">
-      <option value="">All stages</option>
-      <option value="intake">Unprocessed</option>
-      <option value="review_basic">Basic Criteria</option>
-      <option value="viewing">Viewing</option>
-      <option value="voting">Voting</option>
-    </select>
-    <div class="spacer"></div>
-    <button id="filter-clear" class="btn btn-ghost">Clear</button>
-  </div>
-  <div class="list" id="intake-list"></div>
-</section>
-
-
-  <div class="list" id="intake-list"></div>
-</section>
-
-      <!-- SUBMIT -->
-     <section id="view-submit" class="card" aria-label="Submit film">
-  <h1>Submit</h1>
-  <label>Film Title
-    <input id="f-title" type="text" placeholder="e.g. The Godfather">
-  </label>
-  <label>Year
-    <input id="f-year" type="number" placeholder="e.g. 1972">
-  </label>
-  <div class="actions">
-    <button id="btn-submit-film" class="btn btn-primary big">Add Film</button>
-  </div>
-  <div id="submit-msg" class="notice hidden">Added.</div>
-</section>
-
-
-      <!-- BASIC CRITERIA REVIEW -->
-      <section id="view-basic" class="card hidden" aria-label="Basic criteria">
-        <h1>Basic Criteria</h1>
-        <div class="list" id="basic-list"></div>
-      </section>
-
-      <!-- UK DISTRIBUTOR QUEUE -->
-      <section id="view-uk" class="card hidden" aria-label="UK Distributor check">
-        <h1>UK Distributor</h1>
-        <div class="list" id="uk-list"></div>
-      </section>
-
-      <!-- View -->
-<section id="view-holding" class="hidden">
-  <h1>Holding Pen</h1>
-  <div id="holding-list" class="list"></div>
-</section>
-
-      <section id="view-green" class="card hidden" aria-label="Green list">
-  <h1>Green List</h1>
-  <div class="list" id="green-list"></div>
-</section>
-
-      <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
-  <h1>Next Programme</h1>
-  <div class="list" id="nextprog-list"></div>
-</section>
-
-      <section id="view-calendar" class="card hidden" aria-label="Calendar">
-  <h1>Calendar</h1>
-  <div class="list" id="calendar-list"></div>
-</section>
-
-
-      <section id="view-locations" class="card hidden" aria-label="Viewing Locations">
-  <h1>Viewing Locations</h1>
-  <div id="locations-list"></div>
-</section>
-
-
-
-
-      <!-- VIEWING QUEUE -->
-    <!-- VIEWING QUEUE -->
-<section id="view-viewing" class="card hidden" aria-label="Viewing queue">
-  <h1>Viewing Queue</h1>
-
-  <!-- Calendar card -->
-  <div id="view-cal-card" class="card" style="padding:14px;">
-    <div class="cal-head">
-      <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
-      <div class="cal-title" id="cal-title">Month YYYY</div>
-      <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
-    </div>
-    <div class="cal-grid" id="cal-grid"></div>
   </div>
 
-  <!-- (Optional) plain list of viewing films (unscheduled etc.) -->
-  <div class="list" id="viewing-list"></div>
-</section>
+  <!-- Signed in -->
+  <div id="signed-in" class="hidden">
 
+    <!-- Pending Films (formerly Film List / Intake) -->
+    <section id="view-intake" class="card" aria-label="Pending films">
+      <h1>Pending Films</h1>
+      <div id="film-toolbar" class="toolbar">
+        <input id="filter-q" type="text" placeholder="Search title…">
+        <select id="filter-status">
+          <option value="">All stages</option>
+          <option value="intake">Unprocessed</option>
+          <option value="review_basic">Basic Criteria</option>
+          <option value="viewing">Viewing</option>
+          <option value="voting">Voting</option>
+        </select>
+        <div class="spacer"></div>
+        <button id="filter-clear" class="btn btn-ghost">Clear</button>
+      </div>
+      <div class="list" id="intake-list"></div>
+    </section>
 
-      <!-- VOTING -->
-      <section id="view-vote" class="card hidden" aria-label="Voting">
-        <h1>Voting</h1>
-        <div class="list" id="vote-list"></div>
-      </section>
+    <!-- Submit -->
+    <section id="view-submit" class="card hidden" aria-label="Submit film">
+      <h1>Submit</h1>
+      <label>Film Title
+        <input id="f-title" type="text" placeholder="e.g. The Godfather">
+      </label>
+      <label>Year
+        <input id="f-year" type="number" placeholder="e.g. 1972">
+      </label>
+      <div class="actions">
+        <button id="btn-submit-film" class="btn btn-primary big">Add Film</button>
+      </div>
+      <div id="submit-msg" class="notice hidden">Added.</div>
+    </section>
 
-      <!-- APPROVED -->
-      <section id="view-approved" class="card hidden" aria-label="Approved films">
-        <h1>Approved Films</h1>
-        <div class="list" id="approved-list"></div>
-      </section>
+    <!-- Basic Criteria -->
+    <section id="view-basic" class="card hidden" aria-label="Basic criteria">
+      <h1>Basic Criteria</h1>
+      <div class="list" id="basic-list"></div>
+    </section>
 
-      <!-- DISCARDED -->
-      <section id="view-discarded" class="card hidden" aria-label="Discarded films">
-        <h1>Discarded</h1>
-        <div class="list" id="discarded-list"></div>
-      </section>
+    <!-- UK Distributor -->
+    <section id="view-uk" class="card hidden" aria-label="UK Distributor check">
+      <h1>UK Distributor</h1>
+      <div class="list" id="uk-list"></div>
+    </section>
 
-<section id="view-archive" class="card hidden" aria-label="Archive list">
-  <h1>Archive</h1>
-  <div class="list" id="archive-list"></div>
-</section>
+    <!-- Holding Pen -->
+    <section id="view-holding" class="card hidden" aria-label="Holding Pen">
+      <h1>Holding Pen</h1>
+      <div id="holding-list" class="list"></div>
+    </section>
 
-    </div>
-  </main>
+    <!-- Viewing (Calendar + list) -->
+    <section id="view-viewing" class="card hidden" aria-label="Viewing queue">
+      <h1>Viewing Queue</h1>
 
-  <footer>
-    Tip: On your phone, use “Add to Home Screen” to install.
-  </footer>
+      <div id="view-cal-card" class="card" style="padding:14px;">
+        <div class="cal-head">
+          <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
+          <div class="cal-title" id="cal-title">Month YYYY</div>
+          <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(console.error);
-      });
-    }
-  </script>
+      <div class="list" id="viewing-list"></div>
+    </section>
+
+    <!-- Voting -->
+    <section id="view-vote" class="card hidden" aria-label="Voting">
+      <h1>Voting</h1>
+      <div class="list" id="vote-list"></div>
+    </section>
+
+    <!-- Approved -->
+    <section id="view-approved" class="card hidden" aria-label="Approved films">
+      <h1>Approved Films</h1>
+      <div class="list" id="approved-list"></div>
+    </section>
+
+    <!-- Discarded -->
+    <section id="view-discarded" class="card hidden" aria-label="Discarded films">
+      <h1>Discarded</h1>
+      <div class="list" id="discarded-list"></div>
+    </section>
+
+    <!-- Archive -->
+    <section id="view-archive" class="card hidden" aria-label="Archive list">
+      <h1>Archive</h1>
+      <div class="list" id="archive-list"></div>
+    </section>
+
+    <!-- Future pages (kept hidden; not yet wired in app.js) -->
+    <section id="view-green" class="card hidden" aria-label="Green list">
+      <h1>Green List</h1>
+      <div class="list" id="green-list"></div>
+    </section>
+
+    <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
+      <h1>Next Programme</h1>
+      <div class="list" id="nextprog-list"></div>
+    </section>
+
+    <section id="view-calendar" class="card hidden" aria-label="Calendar">
+      <h1>Calendar</h1>
+      <div class="list" id="calendar-list"></div>
+    </section>
+
+    <section id="view-locations" class="card hidden" aria-label="Viewing Locations">
+      <h1>Viewing Locations</h1>
+      <div id="locations-list"></div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  Tip: On your phone, use “Add to Home Screen” to install.
+</footer>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    });
+  }
+</script>
 
 <!-- Mobile Tab Bar -->
 <div id="mobile-tabbar" class="mobile-tabbar">
@@ -234,6 +221,7 @@
     </div>
   </div>
 </div>
+
 <!-- Install FAB (mobile only) -->
 <button id="btn-install" class="install-fab" hidden aria-label="Install app">Install</button>
 
