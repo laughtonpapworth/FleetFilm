@@ -678,27 +678,20 @@ async function loadBasic(){
 
 /* =================== VIEWING (calendar + location add) =================== */
 async function loadViewing(){
-  // Films currently in 'viewing'
-  const docs = await fetchByStatus('viewing');
+  // Clear list
   els.viewingList.innerHTML = '';
 
-  // Films with scheduled viewingDate (for calendar); we include ANY film with a date set.
-  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
-  const scheduled = scheduledSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
-
-  // Render calendar into existing elements
-  renderCalendar(scheduled);
-
+  // Films in viewing
+  const docs = await fetchByStatus('viewing');
   if(!docs.length){
     els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
   }
 
-  // Load locations for dropdown
+  // Location options
   const locSnap = await db.collection('locations').orderBy('name').get();
-  let locs = locSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
-  // Card per film (with date + dropdown + “Add new location…”)
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const dateISO = f.viewingDate?.toDate?.() ? f.viewingDate.toDate().toISOString().slice(0,10) : '';
@@ -710,22 +703,77 @@ async function loadViewing(){
 
     const actions = `
       <div class="form-grid">
-        <label>Viewing date
-          <input type="date" data-edit="viewingDate" data-id="${f.id}" value="${dateISO}">
-        </label>
         <label>Location
           <select data-edit="viewingLocationId" data-id="${f.id}">
             ${locOptions}
           </select>
         </label>
+        <label>Date (read-only here)
+          <input type="date" value="${dateISO}" disabled>
+        </label>
         <div class="actions span-2" style="margin-top:4px">
-          <button class="btn btn-primary" data-act="to-voting" data-id="${f.id}">→ Voting</button>
+          <button class="btn btn-primary" data-act="set-datetime" data-id="${f.id}">Set date & time</button>
+          <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">→ Voting</button>
           <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
         </div>
       </div>
     `;
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
+
+  // Handle location changes + “Add new…”
+  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      const id = sel.dataset.id;
+      const val = sel.value;
+
+      if(val === '__add'){
+        const newLoc = await showAddLocationModal();
+        if(newLoc){
+          // refresh list of locations and set new one
+          const lsnap = await db.collection('locations').orderBy('name').get();
+          const opts =
+            `<option value="">Select location…</option>` +
+            lsnap.docs.map(d=>`<option value="${d.id}" ${d.id===newLoc.id?'selected':''}>${d.data().name}</option>`).join('') +
+            `<option value="__add">+ Add new location…</option>`;
+          sel.innerHTML = opts;
+          await db.collection('films').doc(id).update({
+            viewingLocationId: newLoc.id,
+            viewingLocationName: newLoc.name || ''
+          });
+        }else{
+          // revert
+          sel.value = '';
+        }
+        return;
+      }
+
+      if(!val){
+        await db.collection('films').doc(id).update({ viewingLocationId:'', viewingLocationName:'' });
+        return;
+      }
+      const ldoc = await db.collection('locations').doc(val).get();
+      const name = ldoc.exists ? (ldoc.data().name || '') : '';
+      await db.collection('films').doc(id).update({ viewingLocationId: val, viewingLocationName: name });
+    });
+  });
+
+  // Buttons on each card
+  els.viewingList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const id = b.dataset.id;
+      const act = b.dataset.act;
+      if(act === 'set-datetime'){
+        // put app in calendar “context mode” for this film and navigate
+        state.calendarCtxFilmId = id;
+        location.hash = 'calendar';
+        return;
+      }
+      await adminAction(act, id);
+    });
+  });
+}
+
 
   // Save handlers (date + location + add-new modal)
   els.viewingList.querySelectorAll('[data-edit]').forEach(inp=>{
