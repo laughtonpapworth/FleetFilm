@@ -24,6 +24,12 @@ const els = {
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
 
+  // CALENDAR bits (already in your HTML under Viewing)
+  calTitle: document.getElementById('cal-title'),
+  calGrid: document.getElementById('cal-grid'),
+  calPrev: document.getElementById('cal-prev'),
+  calNext: document.getElementById('cal-next'),
+
   // VIEWS
   views: {
     pending: document.getElementById('view-intake'), // now “Pending Films”
@@ -77,49 +83,60 @@ const REQUIRED_BASIC_FIELDS = [
   'country'          // string
 ];
 
-/* ===== Viewing calendar state ===== */
-const calState = (() => {
-  const d = new Date();
-  return { year: d.getFullYear(), month: d.getMonth() }; // month: 0..11
-})();
+/* =================== Calendar (Monday-first) =================== */
+let calOffset = 0; // months from "now" (0=current, -1=prev month, +1=next month)
 
-function monthLabel(y, m){
-  return new Date(y, m, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
-}
-
-/* Monday-first helper (Mon=0 ... Sun=6) */
-function weekdayIndexMondayFirst(jsDay /*0 Sun..6 Sat*/){
+function mondayIndex(jsDay) { // jsDay: 0=Sun..6=Sat -> Mon=0..Sun=6
   return (jsDay + 6) % 7;
 }
-
-/* Build calendar HTML with Monday as first day */
-function renderCalendarHTML(year, month, eventsByISO = {}){
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstJS = new Date(year, month, 1).getDay(); // 0 Sun..6 Sat
-  const startPad = weekdayIndexMondayFirst(firstJS); // 0..6 (Mon-based)
-  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-  let html = '';
-  // Weekday headers
-  for(const wd of weekdays){
-    html += `<div class="cal-wd">${wd}</div>`;
-  }
-  // Leading empties
-  for(let i=0;i<startPad;i++){
-    html += `<div class="cal-cell empty"></div>`;
-  }
-  // Days
-  for(let d=1; d<=daysInMonth; d++){
-    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const items = eventsByISO[iso] || [];
-    html += `<div class="cal-cell">
-      <div class="cal-day">${d}</div>
-      ${items.map(t=>`<div class="cal-pill">${t}</div>`).join('')}
-    </div>`;
-  }
-  return html;
+function monthStart(year, month) {
+  return new Date(year, month, 1);
+}
+function monthLabel(year, month) {
+  return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
+/** Build the calendar grid HTML (headers + padded days) using Monday as first day. */
+function buildCalendarGridHTML(year, month, eventsByISO) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDow = mondayIndex(monthStart(year, month).getDay()); // 0..6 where 0=Mon
+  const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+    .map(w => `<div class="cal-wd">${w}</div>`).join('');
+
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell empty"></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const items = eventsByISO[iso] || [];
+    const pills = items.map(t => `<div class="cal-pill">${t}</div>`).join('');
+    cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
+  }
+  return headers + cells;
+}
+
+/** Render the calendar (title + grid) into existing elements in the Viewing section. */
+function renderCalendar(events = []) {
+  if (!els.calTitle || !els.calGrid) return;
+
+  const today = new Date();
+  const ref = new Date(today.getFullYear(), today.getMonth() + calOffset, 1);
+  const y = ref.getFullYear();
+  const m = ref.getMonth();
+
+  // Group events by YYYY-MM-DD
+  const byISO = {};
+  events.forEach(ev => {
+    const d = ev.viewingDate?.toDate?.();
+    if (!d) return;
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const label = `${ev.title}${ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : ''}`;
+    (byISO[iso] ||= []).push(label);
+  });
+
+  els.calTitle.textContent = monthLabel(y, m);
+  els.calGrid.innerHTML = buildCalendarGridHTML(y, m, byISO);
+}
 
 /* =================== Firebase =================== */
 function initFirebase(){
@@ -206,6 +223,10 @@ function attachHandlers(){
       location.hash = btn.dataset.view;
     });
   }
+
+  // calendar prev/next (exists on Viewing page)
+  if(els.calPrev) els.calPrev.addEventListener('click', ()=>{ calOffset -= 1; refreshCalendarOnly(); });
+  if(els.calNext) els.calNext.addEventListener('click', ()=>{ calOffset += 1; refreshCalendarOnly(); });
 
   setupPendingFilters();
 }
@@ -569,143 +590,23 @@ async function loadBasic(){
   els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* =================== VIEWING (inline calendar + location add) =================== */
-
-// month offset for calendar (0 = current month)
-let calOffset = 0;
-
-function renderCalendarHTML(filmsWithDates){
-  // Determine target month
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth()+calOffset, 1);
-  const year = first.getFullYear();
-  const month = first.getMonth();
-  const monthName = first.toLocaleString('en-GB', { month: 'long', year: 'numeric' });
-
-  // days in month & start weekday
-  const startWeekday = new Date(year, month, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-
-  // build a map date-> sessions
-  const map = {};
-  filmsWithDates.forEach(f=>{
-    const d = f.viewingDate.toDate();
-    if(d.getFullYear()===year && d.getMonth()===month){
-      const key = d.getDate();
-      map[key] = map[key] || [];
-      map[key].push(f);
-    }
-  });
-
-  // grid: 7 columns, fill with blanks then days
-  const cells = [];
-  for(let i=0;i<startWeekday;i++){ cells.push('<div class="cal-cell empty"></div>'); }
-  for(let day=1; day<=daysInMonth; day++){
-    const sessions = map[day] || [];
-    const items = sessions.map(s=>`<div class="cal-pill">${s.title}${s.viewingLocationName?` • ${s.viewingLocationName}`:''}</div>`).join('');
-    cells.push(`<div class="cal-cell"><div class="cal-day">${day}</div>${items}</div>`);
-  }
-
-  return `
-    <div class="card" id="view-cal-card">
-      <div class="cal-head">
-        <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month">◀</button>
-        <div class="cal-title">${monthName}</div>
-        <button class="btn btn-ghost" id="cal-next" aria-label="Next month">▶</button>
-      </div>
-      <div class="cal-grid">
-        <div class="cal-wd">Sun</div><div class="cal-wd">Mon</div><div class="cal-wd">Tue</div><div class="cal-wd">Wed</div><div class="cal-wd">Thu</div><div class="cal-wd">Fri</div><div class="cal-wd">Sat</div>
-        ${cells.join('')}
-      </div>
-    </div>
-  `;
-}
-
-function hookCalendarHandlers(filmsForCalendar){
-  const prev = document.getElementById('cal-prev');
-  const next = document.getElementById('cal-next');
-  if(prev) prev.addEventListener('click', ()=>{
-    calOffset -= 1;
-    // re-render calendar only
-    renderViewingCalendar(filmsForCalendar);
-  });
-  if(next) next.addEventListener('click', ()=>{
-    calOffset += 1;
-    renderViewingCalendar(filmsForCalendar);
-  });
-}
-
-function renderViewingCalendar(filmsForCalendar){
-  const card = document.getElementById('view-cal-card');
-  if(!card) return; // first render will insert below
-  card.outerHTML = renderCalendarHTML(filmsForCalendar);
-  hookCalendarHandlers(filmsForCalendar);
-}
-
+/* =================== VIEWING (calendar + location add) =================== */
 async function loadViewing(){
   // Films currently in 'viewing'
   const docs = await fetchByStatus('viewing');
-  // Films-with-dates (for calendar) – show anything scheduled, regardless of status? You asked "when & where viewings are happening";
-  // we'll include ANY with viewingDate set.
-  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
-  const scheduled = scheduledSnap.docs
-    .map(d=>({ id:d.id, ...d.data() }))
-    .filter(f=>f.viewingDate?.toDate);
-
   els.viewingList.innerHTML = '';
 
-  // Insert calendar first
-  els.viewingList.insertAdjacentHTML('beforeend', renderCalendarHTML(scheduled));
-  hookCalendarHandlers(scheduled);
+  // Films with scheduled viewingDate (for calendar); we include ANY film with a date set.
+  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
+  const scheduled = scheduledSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
+
+  // Render calendar into existing elements
+  renderCalendar(scheduled);
 
   if(!docs.length){
     els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
   }
-
-   /* ===== Viewing calendar state ===== */
-const calState = (() => {
-  const d = new Date();
-  return { year: d.getFullYear(), month: d.getMonth() }; // month: 0..11
-})();
-
-function monthLabel(y, m){
-  return new Date(y, m, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
-}
-
-/* Monday-first helper (Mon=0 ... Sun=6) */
-function weekdayIndexMondayFirst(jsDay /*0 Sun..6 Sat*/){
-  return (jsDay + 6) % 7;
-}
-
-/* Build calendar HTML with Monday as first day */
-function renderCalendarHTML(year, month, eventsByISO = {}){
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstJS = new Date(year, month, 1).getDay(); // 0 Sun..6 Sat
-  const startPad = weekdayIndexMondayFirst(firstJS); // 0..6 (Mon-based)
-  const weekdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-  let html = '';
-  // Weekday headers
-  for(const wd of weekdays){
-    html += `<div class="cal-wd">${wd}</div>`;
-  }
-  // Leading empties
-  for(let i=0;i<startPad;i++){
-    html += `<div class="cal-cell empty"></div>`;
-  }
-  // Days
-  for(let d=1; d<=daysInMonth; d++){
-    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const items = eventsByISO[iso] || [];
-    html += `<div class="cal-cell">
-      <div class="cal-day">${d}</div>
-      ${items.map(t=>`<div class="cal-pill">${t}</div>`).join('')}
-    </div>`;
-  }
-  return html;
-}
-
 
   // Load locations for dropdown
   const locSnap = await db.collection('locations').orderBy('name').get();
@@ -755,32 +656,30 @@ function renderCalendarHTML(year, month, eventsByISO = {}){
           await db.collection('films').doc(id).update({ viewingDate: null });
         }
         // refresh calendar
-        loadViewing();
+        refreshCalendarOnly();
         return;
       }
 
       if(field === 'viewingLocationId'){
         if(val === '__add'){
-          // open modal to add; on success select it
           const newLoc = await showAddLocationModal();
           if(newLoc){
-            // re-fetch locations
+            // rebuild this dropdown with fresh list and select new location
             const lsnap = await db.collection('locations').orderBy('name').get();
-            const dropdown = inp;
-            dropdown.innerHTML =
+            const opts =
               `<option value="">Select location…</option>` +
               lsnap.docs.map(d=>`<option value="${d.id}" ${d.id===newLoc.id?'selected':''}>${d.data().name}</option>`).join('') +
               `<option value="__add">+ Add new location…</option>`;
+            inp.innerHTML = opts;
 
             await db.collection('films').doc(id).update({
               viewingLocationId: newLoc.id,
               viewingLocationName: newLoc.name || ''
             });
-            // refresh calendar (location name appears)
-            loadViewing();
+            refreshCalendarOnly();
           }else{
-            // revert to previous selected (do nothing)
-            inp.value = f.viewingLocationId || '';
+            // User cancelled: reset to blank (avoid referencing an out-of-scope f)
+            inp.value = '';
           }
           return;
         }
@@ -788,14 +687,13 @@ function renderCalendarHTML(year, month, eventsByISO = {}){
         // normal selection
         if(!val){
           await db.collection('films').doc(id).update({ viewingLocationId:'', viewingLocationName:'' });
-          loadViewing();
+          refreshCalendarOnly();
           return;
         }
         const loc = await db.collection('locations').doc(val).get();
         const name = loc.exists ? (loc.data().name || '') : '';
         await db.collection('films').doc(id).update({ viewingLocationId: val, viewingLocationName: name });
-        // refresh calendar to reflect name
-        loadViewing();
+        refreshCalendarOnly();
         return;
       }
 
@@ -804,6 +702,13 @@ function renderCalendarHTML(year, month, eventsByISO = {}){
   });
 
   els.viewingList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+}
+
+// Re-render only the calendar (used by prev/next and by field changes)
+async function refreshCalendarOnly(){
+  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
+  const scheduled = scheduledSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
+  renderCalendar(scheduled);
 }
 
 /* ---------- Add Location Modal (with postcode lookup) ---------- */
@@ -1094,7 +999,7 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
-    // Basic validate (FIX: this was missing previously)
+    // Basic validate
     if(action==='basic-validate'){
       const snap = await ref.get();
       const f = snap.data() || {};
@@ -1144,6 +1049,8 @@ function boot(){
     await ensureUserDoc(u);
     showSignedIn(true);
     routerFromHash();
+    // Render calendar initially if we're already on Viewing
+    if(!els.views.viewing.classList.contains('hidden')) refreshCalendarOnly();
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
