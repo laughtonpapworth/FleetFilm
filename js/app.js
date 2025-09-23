@@ -987,18 +987,22 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
-    if(action==='basic-validate'){
-      const snap = await ref.get();
-      const f = snap.data() || {};
-      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
-        const v = f[k];
-        return v == null || (typeof v === 'string' && v.trim().length === 0);
-      });
-      if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
-      if(missing.length){ alert('Complete Basic fields: '+missing.join(', ')); return; }
-      await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
-    }
+   if(action==='basic-validate'){
+  const snap = await ref.get();
+  const f = snap.data() || {};
+  const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+  const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
+    const v = f[k];
+    return v == null || (typeof v === 'string' && v.trim().length === 0);
+  });
+  if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
+  if(missing.length){ alert('Complete Basic fields: '+missing.join(', ')); return; }
+
+  await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
+  // jump user to Viewing so they see it immediately
+  location.hash = 'viewing';
+  return;
+}
 
     // UK decisions
     if(action==='uk-yes'){ 
