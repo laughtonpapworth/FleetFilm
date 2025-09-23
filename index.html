@@ -119,21 +119,49 @@
       <div id="holding-list" class="list"></div>
     </section>
 
-    <!-- Viewing (Calendar + list) -->
-    <section id="view-viewing" class="card hidden" aria-label="Viewing queue">
-      <h1>Viewing Queue</h1>
+    <!-- CALENDAR (separate page) -->
+<section id="view-calendar" class="card hidden" aria-label="Calendar">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+    <h1>Calendar</h1>
+    <div class="actions">
+      <button id="cal-back" class="btn btn-ghost">← Back to Viewing</button>
+    </div>
+  </div>
 
-      <div id="view-cal-card" class="card" style="padding:14px;">
-        <div class="cal-head">
-          <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
-          <div class="cal-title" id="cal-title">Month YYYY</div>
-          <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
-        </div>
-        <div class="cal-grid" id="cal-grid"></div>
+  <!-- Context editor (only shown when setting date/time for one film) -->
+  <div id="cal-editor" class="card hidden" style="margin-top:8px;">
+    <h3 id="cal-editor-title" style="margin:4px 0 10px 0;">Schedule Viewing</h3>
+    <div class="form-grid">
+      <label>Date
+        <input id="cal-ed-date" type="date">
+      </label>
+      <label>Time
+        <input id="cal-ed-time" type="time" step="900">
+      </label>
+      <label class="span-2">Location
+        <select id="cal-ed-location"></select>
+      </label>
+      <div class="actions span-2">
+        <button id="cal-ed-save" class="btn btn-primary">Save</button>
+        <button id="cal-ed-cancel" class="btn btn-ghost">Cancel</button>
       </div>
+    </div>
+  </div>
 
-      <div class="list" id="viewing-list"></div>
-    </section>
+  <!-- Month header -->
+  <div id="view-cal-card" class="card" style="padding:14px;margin-top:10px;">
+    <div class="cal-head">
+      <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
+      <div class="cal-title" id="cal-title">Month YYYY</div>
+      <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+
+  <!-- (Optional) a list view under the grid if you want; can be left empty -->
+  <div class="list" id="calendar-list"></div>
+</section>
+
 
     <!-- Voting -->
     <section id="view-vote" class="card hidden" aria-label="Voting">
