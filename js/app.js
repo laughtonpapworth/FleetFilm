@@ -96,6 +96,92 @@ function monthLabel(year, month) {
   return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
+function showAddLocationModal(){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-head">
+        <h2>Add new location</h2>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="span-2">Location Name
+          <input id="loc-name" type="text" placeholder="e.g. Church Hall">
+        </label>
+        <label class="span-2">Address
+          <input id="loc-addr" type="text" placeholder="Street, Town">
+        </label>
+        <label>Postcode
+          <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">
+        </label>
+        <label>City
+          <input id="loc-city" type="text" placeholder="(optional)">
+        </label>
+        <div class="actions span-2">
+          <button class="btn btn-ghost" id="loc-lookup">Lookup postcode</button>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" id="loc-save">Save</button>
+        </div>
+        <div id="loc-msg" class="notice hidden"></div>
+      </div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const close = (result)=>{ document.body.removeChild(overlay); resolve(result); };
+
+    modal.querySelector('#loc-cancel').addEventListener('click', ()=>close(null));
+
+    modal.querySelector('#loc-lookup').addEventListener('click', async ()=>{
+      const pc = (document.getElementById('loc-postcode').value || '').trim();
+      if(!pc){ toast('Enter a postcode first'); return; }
+      try{
+        const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`);
+        const data = await r.json();
+        if(data && data.status===200){
+          const res = data.result;
+          document.getElementById('loc-city').value = res.admin_district || res.parish || res.region || '';
+          toast(`Found: ${res.country}${res.admin_district? ' • '+res.admin_district:''}`);
+        }else{
+          toast('No match for that postcode');
+        }
+      }catch{
+        toast('Lookup failed (network)');
+      }
+    });
+
+    modal.querySelector('#loc-save').addEventListener('click', async ()=>{
+      const name = (document.getElementById('loc-name').value||'').trim();
+      const address = (document.getElementById('loc-addr').value||'').trim();
+      const postcode = (document.getElementById('loc-postcode').value||'').trim();
+      const city = (document.getElementById('loc-city').value||'').trim();
+      if(!name){ toast('Name required'); return; }
+      try{
+        const ref = await db.collection('locations').add({
+          name, address, postcode, city,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        close({ id: ref.id, name });
+      }catch(e){
+        toast(e.message || 'Could not save');
+      }
+    });
+
+    function toast(msg){
+      const m = modal.querySelector('#loc-msg');
+      m.textContent = msg;
+      m.classList.remove('hidden');
+      setTimeout(()=>m.classList.add('hidden'), 1800);
+    }
+  });
+}
+
+
 /** Build the calendar grid HTML (headers + padded days) using Monday as first day. */
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
