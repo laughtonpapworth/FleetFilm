@@ -690,8 +690,8 @@ async function loadViewing(){
 
       if(act === 'set-datetime'){
         // Remember which film we’re scheduling, then navigate to Calendar page
-        sessionStorage.setItem('scheduleTarget', id);
-        location.hash = 'calendar';
+       sessionStorage.setItem('scheduleTarget', filmId);
+location.hash = 'calendar';
         return;
       }
 
