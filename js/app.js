@@ -24,7 +24,7 @@ const els = {
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
 
-  // CALENDAR bits (already in your HTML under Viewing)
+  // CALENDAR bits (either on Viewing page or dedicated Calendar page)
   calTitle: document.getElementById('cal-title'),
   calGrid: document.getElementById('cal-grid'),
   calPrev: document.getElementById('cal-prev'),
@@ -32,7 +32,7 @@ const els = {
 
   // VIEWS
   views: {
-    pending: document.getElementById('view-intake'), // now “Pending Films”
+    pending: document.getElementById('view-intake'), // “Pending Films”
     submit: document.getElementById('view-submit'),
     basic: document.getElementById('view-basic'),
     viewing: document.getElementById('view-viewing'),
@@ -42,6 +42,7 @@ const els = {
     nextprog: document.getElementById('view-nextprog'),
     discarded: document.getElementById('view-discarded'),
     archive: document.getElementById('view-archive'),
+    calendar: document.getElementById('view-calendar') // OPTIONAL: if you have a separate page
   },
 
   // NAV BUTTONS
@@ -56,6 +57,7 @@ const els = {
     nextprog: document.getElementById('nav-nextprog'),
     discarded: document.getElementById('nav-discarded'),
     archive: document.getElementById('nav-archive'),
+    calendar: document.getElementById('nav-calendar') // OPTIONAL
   },
 
   // SUBMIT
@@ -84,108 +86,13 @@ const REQUIRED_BASIC_FIELDS = [
 ];
 
 /* =================== Calendar (Monday-first) =================== */
-let calOffset = 0; // months from "now" (0=current, -1=prev month, +1=next month)
+let calOffset = 0; // months from "now" (0=current, -1=prev, +1=next)
+const mondayIndex = (jsDay) => (jsDay + 6) % 7; // js 0=Sun..6=Sat -> Mon=0..Sun=6
+const monthLabel = (y, m) => new Date(y, m, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 
-function mondayIndex(jsDay) { // jsDay: 0=Sun..6=Sat -> Mon=0..Sun=6
-  return (jsDay + 6) % 7;
-}
-function monthStart(year, month) {
-  return new Date(year, month, 1);
-}
-function monthLabel(year, month) {
-  return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
-}
-
-function showAddLocationModal(){
-  return new Promise(resolve=>{
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-head">
-        <h2>Add new location</h2>
-        <div style="display:flex; gap:8px">
-          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
-        </div>
-      </div>
-      <div class="form-grid">
-        <label class="span-2">Location Name
-          <input id="loc-name" type="text" placeholder="e.g. Church Hall">
-        </label>
-        <label class="span-2">Address
-          <input id="loc-addr" type="text" placeholder="Street, Town">
-        </label>
-        <label>Postcode
-          <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">
-        </label>
-        <label>City
-          <input id="loc-city" type="text" placeholder="(optional)">
-        </label>
-        <div class="actions span-2">
-          <button class="btn btn-ghost" id="loc-lookup">Lookup postcode</button>
-          <div class="spacer"></div>
-          <button class="btn btn-primary" id="loc-save">Save</button>
-        </div>
-        <div id="loc-msg" class="notice hidden"></div>
-      </div>
-    `;
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    const close = (result)=>{ document.body.removeChild(overlay); resolve(result); };
-
-    modal.querySelector('#loc-cancel').addEventListener('click', ()=>close(null));
-
-    modal.querySelector('#loc-lookup').addEventListener('click', async ()=>{
-      const pc = (document.getElementById('loc-postcode').value || '').trim();
-      if(!pc){ toast('Enter a postcode first'); return; }
-      try{
-        const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`);
-        const data = await r.json();
-        if(data && data.status===200){
-          const res = data.result;
-          document.getElementById('loc-city').value = res.admin_district || res.parish || res.region || '';
-          toast(`Found: ${res.country}${res.admin_district? ' • '+res.admin_district:''}`);
-        }else{
-          toast('No match for that postcode');
-        }
-      }catch{
-        toast('Lookup failed (network)');
-      }
-    });
-
-    modal.querySelector('#loc-save').addEventListener('click', async ()=>{
-      const name = (document.getElementById('loc-name').value||'').trim();
-      const address = (document.getElementById('loc-addr').value||'').trim();
-      const postcode = (document.getElementById('loc-postcode').value||'').trim();
-      const city = (document.getElementById('loc-city').value||'').trim();
-      if(!name){ toast('Name required'); return; }
-      try{
-        const ref = await db.collection('locations').add({
-          name, address, postcode, city,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        close({ id: ref.id, name });
-      }catch(e){
-        toast(e.message || 'Could not save');
-      }
-    });
-
-    function toast(msg){
-      const m = modal.querySelector('#loc-msg');
-      m.textContent = msg;
-      m.classList.remove('hidden');
-      setTimeout(()=>m.classList.add('hidden'), 1800);
-    }
-  });
-}
-
-
-/** Build the calendar grid HTML (headers + padded days) using Monday as first day. */
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDow = mondayIndex(monthStart(year, month).getDay()); // 0..6 where 0=Mon
+  const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 (Mon-first)
   const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
     .map(w => `<div class="cal-wd">${w}</div>`).join('');
 
@@ -201,12 +108,11 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   return headers + cells;
 }
 
-/** Render the calendar (title + grid) into existing elements in the Viewing section. */
 function renderCalendar(events = []) {
   if (!els.calTitle || !els.calGrid) return;
 
-  const today = new Date();
-  const ref = new Date(today.getFullYear(), today.getMonth() + calOffset, 1);
+  const base = new Date();
+  const ref = new Date(base.getFullYear(), base.getMonth() + calOffset, 1);
   const y = ref.getFullYear();
   const m = ref.getMonth();
 
@@ -216,7 +122,7 @@ function renderCalendar(events = []) {
     const d = ev.viewingDate?.toDate?.();
     if (!d) return;
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const label = `${ev.title}${ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : ''}`;
+    const label = `${ev.title}${ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : ''}${ev.viewingTime ? ` • ${ev.viewingTime}` : ''}`;
     (byISO[iso] ||= []).push(label);
   });
 
@@ -252,6 +158,7 @@ function setView(name){
   if(name==='nextprog') loadNextProgramme();
   if(name==='discarded') loadDiscarded();
   if(name==='archive') loadArchive();
+  if(name==='calendar') refreshCalendarOnly(); // if you have a separate page
 }
 
 function routerFromHash(){
@@ -310,11 +217,9 @@ function attachHandlers(){
     });
   }
 
-  // calendar prev/next (exists on Viewing page)
+  // calendar prev/next (exists wherever you placed the calendar UI)
   if(els.calPrev) els.calPrev.addEventListener('click', ()=>{ calOffset -= 1; refreshCalendarOnly(); });
   if(els.calNext) els.calNext.addEventListener('click', ()=>{ calOffset += 1; refreshCalendarOnly(); });
-
-  setupPendingFilters();
 }
 
 /* =================== Filters (Pending) =================== */
@@ -469,7 +374,8 @@ async function submitFilm(){
     posterUrl: '',
     imdbID: '',
     // viewing scheduling
-    viewingDate: null,            // Timestamp
+    viewingDate: null,            // Firestore Timestamp
+    viewingTime: '',              // HH:MM (optional text)
     viewingLocationId: '',
     viewingLocationName: '',
     // green list timestamp
@@ -683,6 +589,12 @@ async function loadViewing(){
 
   // Films in viewing
   const docs = await fetchByStatus('viewing');
+
+  // Calendar at top (use any scheduled film; calendar widgets are global)
+  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
+  const scheduled = scheduledSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
+  renderCalendar(scheduled);
+
   if(!docs.length){
     els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
@@ -724,7 +636,70 @@ async function loadViewing(){
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
-/* ---------- Add Location Modal (with postcode lookup) ---------- */
+  // Handle location dropdown changes (including "Add new")
+  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      const id = sel.dataset.id;
+      const val = sel.value;
+
+      if(val === '__add'){
+        // Open modal to add
+        const newLoc = await showAddLocationModal();
+        if(newLoc){
+          await db.collection('films').doc(id).update({
+            viewingLocationId: newLoc.id,
+            viewingLocationName: newLoc.name || ''
+          });
+        }else{
+          // revert to blank
+          sel.value = '';
+        }
+        // Refresh list
+        loadViewing();
+        return;
+      }
+
+      if(!val){
+        // cleared selection
+        await db.collection('films').doc(id).update({
+          viewingLocationId: '',
+          viewingLocationName: ''
+        });
+        refreshCalendarOnly();
+        return;
+      }
+
+      // normal selection
+      const locDoc = await db.collection('locations').doc(val).get();
+      const name = locDoc.exists ? (locDoc.data().name || '') : '';
+      await db.collection('films').doc(id).update({
+        viewingLocationId: val,
+        viewingLocationName: name
+      });
+      refreshCalendarOnly();
+    });
+  });
+
+  // Buttons: set-datetime (goes to Calendar), to-voting, to-discard
+  els.viewingList.querySelectorAll('button[data-act]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+
+      if(act === 'set-datetime'){
+        // Remember which film we’re scheduling, then navigate to Calendar page
+        sessionStorage.setItem('scheduleTarget', id);
+        location.hash = 'calendar';
+        return;
+      }
+
+      // Other actions go via adminAction
+      await adminAction(act, id);
+    });
+  });
+}
+
+/* ---------- Add Location Modal (ONE definition) ---------- */
 function showAddLocationModal(){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -739,11 +714,11 @@ function showAddLocationModal(){
         </div>
       </div>
       <div class="form-grid">
-        <label class="span-2">Name
+        <label class="span-2">Location Name
           <input id="loc-name" type="text" placeholder="e.g. Church Hall">
         </label>
         <label class="span-2">Address
-          <input id="loc-addr" type="text" placeholder="Street, town">
+          <input id="loc-addr" type="text" placeholder="Street, Town">
         </label>
         <label>Postcode
           <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">
@@ -762,7 +737,7 @@ function showAddLocationModal(){
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    function close(result){ document.body.removeChild(overlay); resolve(result); }
+    const close = (result)=>{ document.body.removeChild(overlay); resolve(result); };
 
     modal.querySelector('#loc-cancel').addEventListener('click', ()=>close(null));
 
@@ -805,7 +780,7 @@ function showAddLocationModal(){
       const m = modal.querySelector('#loc-msg');
       m.textContent = msg;
       m.classList.remove('hidden');
-      setTimeout(()=>m.classList.add('hidden'), 2000);
+      setTimeout(()=>m.classList.add('hidden'), 1800);
     }
   });
 }
@@ -1012,20 +987,18 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
- // inside adminAction(action, filmId)
-if(action==='basic-validate'){
-  const snap = await ref.get();
-  const f = snap.data() || {};
-  const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-  const required = ['runtimeMinutes','language','ukAgeRating','genre','country'];
-  const missing = required.filter(k=>{
-    const v = f[k]; return v == null || (typeof v === 'string' && v.trim().length === 0);
-  });
-  if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
-  if(missing.length){ alert('Complete Basic fields: '+missing.join(', ')); return; }
-  await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
-}
-
+    if(action==='basic-validate'){
+      const snap = await ref.get();
+      const f = snap.data() || {};
+      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
+        const v = f[k];
+        return v == null || (typeof v === 'string' && v.trim().length === 0);
+      });
+      if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
+      if(missing.length){ alert('Complete Basic fields: '+missing.join(', ')); return; }
+      await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
+    }
 
     // UK decisions
     if(action==='uk-yes'){ 
@@ -1049,10 +1022,18 @@ if(action==='basic-validate'){
   }catch(e){ alert(e.message); }
 }
 
+/* =================== Calendar data refresh =================== */
+async function refreshCalendarOnly(){
+  const snap = await db.collection('films').where('viewingDate','!=', null).get();
+  const items = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
+  renderCalendar(items);
+}
+
 /* =================== Boot =================== */
 function boot(){
   initFirebase();
   attachHandlers();
+  setupPendingFilters();
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
     if(!u){
@@ -1063,8 +1044,11 @@ function boot(){
     await ensureUserDoc(u);
     showSignedIn(true);
     routerFromHash();
-    // Render calendar initially if we're already on Viewing
-    if(!els.views.viewing.classList.contains('hidden')) refreshCalendarOnly();
+    // If a calendar is visible on first load, render it
+    if((els.views.viewing && !els.views.viewing.classList.contains('hidden')) ||
+       (els.views.calendar && !els.views.calendar.classList.contains('hidden'))){
+      refreshCalendarOnly();
+    }
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
