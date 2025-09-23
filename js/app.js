@@ -467,76 +467,82 @@ function detailCard(f, actionsHtml=''){
 
 /* =================== Pending Films =================== */
 async function loadPending(){
-  // Only films that haven’t started the flow
-  const docs = await fetchByStatus('intake');
+  // Only show films that are truly pending (submit & basic)
+  const statuses = ['intake','review_basic'];
+  let items = [];
+  for(const s of statuses){ items.push(...await fetchByStatus(s)); }
+  items.sort((a,b)=> (b.data().createdAt?.toMillis?.()||0) - (a.data().createdAt?.toMillis?.()||0));
+
+  let films = items.map(d=>({ id:d.id, ...d.data() }));
+  if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
+  if(filterState.status){ films = films.filter(x => x.status === filterState.status); }
 
   els.pendingList.innerHTML = '';
-  if(!docs.length){
-    els.pendingList.innerHTML = '<div class="notice">No films awaiting Basic Criteria.</div>';
-    return;
-  }
-
-  const films = docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .sort((a,b)=> (b.createdAt?.toMillis?.()||0) - (a.createdAt?.toMillis?.()||0));
+  if(!films.length){ els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
 
   films.forEach(f=>{
+    const nextLabel = (f.status === 'intake') ? 'Basic Criteria' : 'Move to Viewing';
     const actions = `
-      <button class="btn btn-primary" data-basic="${f.id}">Basic Criteria</button>
-      <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
+      <button class="btn btn-primary" data-next="${f.id}">${nextLabel}</button>
+      <button class="btn btn-danger" data-archive="${f.id}">Discard</button>
     `;
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  // → Basic Criteria
-  els.pendingList.querySelectorAll('button[data-basic]').forEach(btn=>{
+  els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.basic;
-      await db.collection('films').doc(id).update({ status:'review_basic' });
-      // Remove from Pending immediately and (optionally) take user to Basic page
-      loadPending();
-      location.hash = 'basic';
+      const id = btn.dataset.next;
+      const ref = db.collection('films').doc(id);
+      const snap = await ref.get();
+      if(!snap.exists) return;
+      const f = snap.data();
+      try{
+        await nextStage(ref, f);
+        routerFromHash();   // refresh the view
+      }catch(e){ alert(e.message); }
     });
   });
 
-  // Discard (available at this stage too)
-  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
+  // “Discard” in Pending sends to discarded
+  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.discard;
+      const id = btn.dataset.archive;
       await db.collection('films').doc(id).update({ status:'discarded' });
-      loadPending();
+      routerFromHash();
     });
   });
 }
+
 
 
 // Move to next stage (validates Basic → Viewing)
 async function nextStage(ref, f){
   switch(f.status){
     case 'intake':
-      await ref.update({ status:'review_basic' });
+      await ref.update({ status:'review_basic' }); // Submit → Basic
       return;
     case 'review_basic': {
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
-        const v = f[k];
-        return v == null || (typeof v === 'string' && v.trim().length === 0);
+      const required = ['runtimeMinutes','language','ukAgeRating','genre','country'];
+      const missing = required.filter(k=>{
+        const v = f[k]; return v == null || (typeof v === 'string' && v.trim().length === 0);
       });
       if(!okRuntime) throw new Error('Runtime must be 150 min or less.');
       if(missing.length) throw new Error('Complete Basic fields: '+missing.join(', '));
-      await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
+      await ref.update({ 'criteria.basic_pass': true, status:'viewing' }); // Basic → Viewing
       return;
     }
     case 'viewing':
-      await ref.update({ status:'voting' });
+      await ref.update({ status:'voting' });        // Viewing → Voting
       return;
     case 'voting':
-      location.hash = 'vote';
+      await ref.update({ status:'uk_check' });      // Voting → UK Distributor (your new flow)
       return;
     default:
       return;
   }
 }
+
 
 /* =================== BASIC =================== */
 async function loadBasic(){
