@@ -692,9 +692,12 @@ async function loadViewing(){
   const locSnap = await db.collection('locations').orderBy('name').get();
   const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
+  // Render each film card
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const dateISO = f.viewingDate?.toDate?.() ? f.viewingDate.toDate().toISOString().slice(0,10) : '';
+    const dateISO = f.viewingDate?.toDate?.()
+      ? f.viewingDate.toDate().toISOString().slice(0,10)
+      : '';
 
     const locOptions =
       `<option value="">Select location…</option>` +
@@ -720,6 +723,66 @@ async function loadViewing(){
     `;
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
+
+  // Handle location dropdown changes (including "Add new")
+  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      const id = sel.dataset.id;
+      const val = sel.value;
+
+      if(val === '__add'){
+        // Open add-location modal you already have (showAddLocationModal)
+        const newLoc = await showAddLocationModal();
+        if(newLoc){
+          await db.collection('films').doc(id).update({
+            viewingLocationId: newLoc.id,
+            viewingLocationName: newLoc.name || ''
+          });
+        }
+        // Re-render so the dropdown refreshes with the new option selected
+        loadViewing();
+        return;
+      }
+
+      if(!val){
+        // cleared selection
+        await db.collection('films').doc(id).update({
+          viewingLocationId: '',
+          viewingLocationName: ''
+        });
+        loadViewing();
+        return;
+      }
+
+      // normal selection
+      const locDoc = await db.collection('locations').doc(val).get();
+      const name = locDoc.exists ? (locDoc.data().name || '') : '';
+      await db.collection('films').doc(id).update({
+        viewingLocationId: val,
+        viewingLocationName: name
+      });
+      loadViewing();
+    });
+  });
+
+  // Buttons: set-datetime (goes to Calendar), to-voting, to-discard
+  els.viewingList.querySelectorAll('button[data-act]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+
+      if(act === 'set-datetime'){
+        // Remember which film we’re scheduling, then navigate to Calendar page
+        sessionStorage.setItem('scheduleTarget', id);
+        location.hash = 'calendar';
+        return;
+      }
+
+      // Other actions go via adminAction
+      await adminAction(act, id);
+    });
+  });
+}
 
   // Handle location changes + “Add new…”
   els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
