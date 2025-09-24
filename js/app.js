@@ -14,7 +14,7 @@ const els = {
   signOut: document.getElementById('btn-signout'),
 
   // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
+  pendingList: document.getElementById('intake-list'),
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -73,10 +73,10 @@ const state = { user: null, role: 'member' };
 /* ========= Required fields for Basic ========= */
 const REQUIRED_BASIC_FIELDS = [
   'runtimeMinutes',  // number; must be <= 150
-  'language',        // string
-  'ukAgeRating',     // string
-  'genre',           // string
-  'country'          // string
+  'language',
+  'ukAgeRating',
+  'genre',
+  'country'
 ];
 
 /* =================== Calendar (Monday-first) =================== */
@@ -112,19 +112,18 @@ async function refreshCalendarOnly(){
   const gridEl  = document.getElementById('cal-grid');
   if(!titleEl || !gridEl) return;
 
-  // Get all scheduled films (any status) with a viewingDate
   const snap = await db.collection('films').where('viewingDate','!=', null).get();
-  const events = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
+  const events = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+    .filter(f => f.viewingDate && typeof f.viewingDate.toDate === 'function');
 
-  // Group by YYYY-MM-DD
   const byISO = {};
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const label =
       ev.title +
-      (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
-      (ev.viewingLocationName ? (' • ' + ev.viewingLocationName) : '');
+      (ev.viewingTime ? ` ${ev.viewingTime}` : '') +
+      (ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : '');
     (byISO[iso] ||= []).push(label);
   });
 
@@ -133,7 +132,6 @@ async function refreshCalendarOnly(){
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 }
-
 
 /* =================== Firebase =================== */
 function initFirebase(){
@@ -181,7 +179,7 @@ function showSignedIn(on){
   els.nav.classList.toggle('hidden', !on);
 }
 
-// Create a user doc if missing
+/* Ensure user doc exists / get role */
 async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
   const snap = await ref.get();
@@ -205,25 +203,20 @@ function attachHandlers(){
   els.signOut.addEventListener('click', () => auth.signOut());
   els.submitBtn.addEventListener('click', submitFilm);
 
-  // Google sign-in: popup with redirect fallback (fixes COOP issue)
+  // Google sign-in with robust fallback to redirect (avoids COOP/popup issues)
   els.googleBtn?.addEventListener('click', async () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_) {}
-    try {
-      await auth.signInWithPopup(provider);
-    } catch (e) {
-      const msg = String(e?.message || '');
-      const code = String(e?.code || '');
-      const popupBlocked =
-        code === 'auth/popup-blocked' ||
-        code === 'auth/popup-closed-by-user' ||
-        /Cross-Origin-Opener-Policy/i.test(msg) ||
-        /blocked the window\.closed/i.test(msg);
-      if (popupBlocked) {
-        try { await auth.signInWithRedirect(provider); return; }
-        catch (e2) { alert('Sign-in via redirect failed: ' + (e2?.message || e2)); }
+    const prov = new firebase.auth.GoogleAuthProvider();
+    try{
+      await auth.signInWithPopup(prov);
+    }catch(e){
+      // If popup blocked / closed / COOP warning -> try redirect
+      if (e?.code === 'auth/popup-blocked' ||
+          e?.code === 'auth/popup-closed-by-user' ||
+          String(e).includes('Cross-Origin-Opener-Policy')) {
+        try { await auth.signInWithRedirect(prov); }
+        catch (e2) { alert(e2.message || 'Sign-in failed'); }
       } else {
-        alert('Sign-in failed: ' + (e?.message || e));
+        alert(e.message || 'Sign-in failed');
       }
     }
   });
@@ -237,7 +230,7 @@ function attachHandlers(){
 
   window.addEventListener('hashchange', routerFromHash);
 
-  // mobile tabbar (if present)
+  // mobile tabbar
   const mbar = document.getElementById('mobile-tabbar');
   if(mbar){
     mbar.addEventListener('click', (e)=>{
@@ -250,7 +243,6 @@ function attachHandlers(){
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
-
 function setupPendingFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
@@ -290,7 +282,7 @@ async function omdbDetailsById(imdbID){
 
 function mapMpaaToUk(mpaa){
   if(!mpaa) return '';
-  const s = mpaa.toUpperCase();
+  const s = String(mpaa).toUpperCase();
   if(s === 'G') return 'U';
   if(s === 'PG') return 'PG';
   if(s === 'PG-13') return '12A';
@@ -448,8 +440,6 @@ async function fetchByStatus(status){
 }
 
 /* =================== Rendering helpers =================== */
-
-// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -464,7 +454,6 @@ function pendingCard(f, actionsHtml=''){
   </div>`;
 }
 
-// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -493,8 +482,7 @@ function detailCard(f, actionsHtml=''){
 
 /* =================== Pending Films =================== */
 async function loadPending(){
-  // IMPORTANT: Pending shows ONLY 'intake'
-  const docs = await fetchByStatus('intake');
+  const docs = await fetchByStatus('intake'); // ONLY 'intake' on Pending
 
   let films = docs.map(d=>({ id:d.id, ...d.data() }));
   if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
@@ -517,7 +505,7 @@ async function loadPending(){
       const id = btn.dataset.next;
       const ref = db.collection('films').doc(id);
       await ref.update({ status:'review_basic' });
-      loadPending(); // immediately disappear from pending
+      loadPending(); // disappear from Pending
     });
   });
 
@@ -539,8 +527,7 @@ async function loadPending(){
     });
   });
 
-  // set up toolbar listeners once
-  setupPendingFilters();
+  setupPendingFilters(); // once controls exist
 }
 
 /* =================== BASIC =================== */
@@ -558,7 +545,10 @@ async function loadBasic(){
         <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
         <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
         <label>Disk Available?
-          <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
+          <select data-edit="hasDisk" data-id="${f.id}">
+            <option value="false"${f.hasDisk?'':' selected'}>No</option>
+            <option value="true"${f.hasDisk?' selected':''}>Yes</option>
+          </select>
         </label>
         <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
         <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
@@ -580,7 +570,9 @@ async function loadBasic(){
       await db.collection('films').doc(id).update({ [field]: val });
     });
   });
-  els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  els.basicList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', ()=>adminAction(b.dataset.act,b.dataset.id));
+  });
 }
 
 /* =================== VIEWING (location + jump to calendar) =================== */
@@ -595,11 +587,13 @@ async function loadViewing(){
 
   // Locations
   const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...d.data() }));
 
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const dateISO = f.viewingDate?.toDate?.() ? f.viewingDate.toDate().toISOString().slice(0,10) : '';
+    const dateISO = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
+      ? f.viewingDate.toDate().toISOString().slice(0,10)
+      : '';
     const locOptions =
       `<option value="">Select location…</option>` +
       locs.map(l=>`<option value="${l.id}" ${f.viewingLocationId===l.id?'selected':''}>${l.name}</option>`).join('') +
@@ -793,7 +787,7 @@ async function loadCalendar(){
   const snap = await db.collection('films').doc(filmId).get();
   if(snap.exists){
     const f = snap.data();
-    if(f.viewingDate?.toDate?.()){
+    if(f.viewingDate && typeof f.viewingDate.toDate === 'function'){
       dateInp.value = f.viewingDate.toDate().toISOString().slice(0,10);
     }
     if(f.viewingTime){ timeInp.value = f.viewingTime; }
@@ -897,7 +891,6 @@ async function checkAutoOutcome(filmId){
     if(val===1) yes+=1;
     if(val===-1) no+=1;
   });
-  // New rule: 4 YES -> move to UK Distributor; 4 NO -> Discard
   if(yes>=4){
     await ref.update({ status:'uk_check' });
   } else if(no>=4){
@@ -930,7 +923,9 @@ async function loadGreen(){
   if(!docs.length){ els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
+    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
+      ? f.greenAt.toDate().toISOString().slice(0,10)
+      : '—';
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
@@ -958,7 +953,9 @@ async function loadNextProgramme(){
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
+    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
+      ? f.greenAt.toDate().toISOString().slice(0,10)
+      : '—';
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
@@ -1018,7 +1015,7 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
-    // Basic validate
+    // Basic validate -> viewing
     if(action==='basic-validate'){
       const snap = await ref.get();
       const f = snap.data() || {};
