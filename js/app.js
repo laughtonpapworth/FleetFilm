@@ -138,15 +138,23 @@ async function refreshCalendarOnly(){
 
 /* =================== Firebase =================== */
 function initFirebase(){
-  const cfg = window.__FLEETFILM__CONFIG;
-  if(!cfg || !cfg.apiKey) {
-    alert('Missing Firebase config. Edit js/firebase-config.js');
-    throw new Error('Missing Firebase config');
+  // If firebase-config.js already initialized the app, just attach to it.
+  if (firebase.apps && firebase.apps.length) {
+    app = firebase.app();
+  } else if (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.apiKey) {
+    app = firebase.initializeApp(window.__FLEETFILM__CONFIG);
+  } else if (window.firebaseConfig && window.firebaseConfig.apiKey) {
+    // cover another common pattern: global firebaseConfig object
+    app = firebase.initializeApp(window.firebaseConfig);
+  } else {
+    console.error('Firebase config not found. Either call firebase.initializeApp(...) in firebase-config.js or expose window.__FLEETFILM__CONFIG.');
+    alert('Missing Firebase config. Check js/firebase-config.js.');
+    return;
   }
-  app = firebase.initializeApp(cfg);
   auth = firebase.auth();
   db = firebase.firestore();
 }
+
 
 function setView(name){
   // Nav active state
@@ -1179,15 +1187,10 @@ async function waitForConfig(timeoutMs = 5000) {
 
 /* =================== Boot =================== */
 async function boot(){
-  // Wait for firebase-config.js to populate window.__FLEETFILM__CONFIG
-  const cfg = await waitForConfig(5000);
-  if(!cfg || !cfg.apiKey){
-    console.error('firebase-config.js not loaded before app boot. Check script order/network.');
-    alert('Missing Firebase config. Ensure js/firebase-config.js loads before this page finishes.');
-    return; // prevent throwing so the page can show the message gracefully
-  }
-
+  // No waiting needed; initFirebase can attach to an existing app.
   initFirebase();
+  if (!app) return; // initFirebase already alerted if it failed
+
   attachHandlers();
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
@@ -1202,3 +1205,4 @@ async function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
+
