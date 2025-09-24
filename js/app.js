@@ -14,7 +14,7 @@ const els = {
   signOut: document.getElementById('btn-signout'),
 
   // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'),
+  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -73,10 +73,10 @@ const state = { user: null, role: 'member' };
 /* ========= Required fields for Basic ========= */
 const REQUIRED_BASIC_FIELDS = [
   'runtimeMinutes',  // number; must be <= 150
-  'language',
-  'ukAgeRating',
-  'genre',
-  'country'
+  'language',        // string
+  'ukAgeRating',     // string
+  'genre',           // string
+  'country'          // string
 ];
 
 /* =================== Calendar (Monday-first) =================== */
@@ -90,7 +90,7 @@ function monthLabel(year, month){
 /** Build the calendar grid HTML (headers + padded days) using Monday as first day. */
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 where 0=Mon
+  const firstDow = mondayIndex(new Date(year, month, 1).getDay());
   const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
     .map(w => `<div class="cal-wd">${w}</div>`).join('');
 
@@ -112,18 +112,19 @@ async function refreshCalendarOnly(){
   const gridEl  = document.getElementById('cal-grid');
   if(!titleEl || !gridEl) return;
 
+  // Get all scheduled films (any status) with a viewingDate
   const snap = await db.collection('films').where('viewingDate','!=', null).get();
-  const events = snap.docs.map(d=>({ id:d.id, ...d.data() }))
-    .filter(f => f.viewingDate && typeof f.viewingDate.toDate === 'function');
+  const events = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
 
+  // Group by YYYY-MM-DD
   const byISO = {};
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const label =
       ev.title +
-      (ev.viewingTime ? ` ${ev.viewingTime}` : '') +
-      (ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : '');
+      (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
+      (ev.viewingLocationName ? (' • ' + ev.viewingLocationName) : '');
     (byISO[iso] ||= []).push(label);
   });
 
@@ -132,6 +133,7 @@ async function refreshCalendarOnly(){
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 }
+
 
 /* =================== Firebase =================== */
 function initFirebase(){
@@ -179,7 +181,7 @@ function showSignedIn(on){
   els.nav.classList.toggle('hidden', !on);
 }
 
-/* Ensure user doc exists / get role */
+// Create a user doc if missing
 async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
   const snap = await ref.get();
@@ -195,6 +197,21 @@ async function ensureUserDoc(u){
   state.role = role;
 }
 
+/* ---------- AUTH: robust Google sign-in (popup -> redirect fallback) ---------- */
+async function googleSignIn(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+
+  try {
+    // Try popup first (better UX)
+    await auth.signInWithPopup(provider);
+  } catch (e) {
+    // COOP / popup blocked / third-party cookies off, etc.
+    console.warn('Popup sign-in failed; falling back to redirect:', e?.code || e?.message);
+    await auth.signInWithRedirect(provider);
+  }
+}
+
 function attachHandlers(){
   Object.values(els.navButtons).forEach(btn => {
     if(!btn) return;
@@ -203,23 +220,10 @@ function attachHandlers(){
   els.signOut.addEventListener('click', () => auth.signOut());
   els.submitBtn.addEventListener('click', submitFilm);
 
-  // Google sign-in with robust fallback to redirect (avoids COOP/popup issues)
-  els.googleBtn?.addEventListener('click', async () => {
-    const prov = new firebase.auth.GoogleAuthProvider();
-    try{
-      await auth.signInWithPopup(prov);
-    }catch(e){
-      // If popup blocked / closed / COOP warning -> try redirect
-      if (e?.code === 'auth/popup-blocked' ||
-          e?.code === 'auth/popup-closed-by-user' ||
-          String(e).includes('Cross-Origin-Opener-Policy')) {
-        try { await auth.signInWithRedirect(prov); }
-        catch (e2) { alert(e2.message || 'Sign-in failed'); }
-      } else {
-        alert(e.message || 'Sign-in failed');
-      }
-    }
-  });
+  // Use robust Google sign-in
+  if (els.googleBtn){
+    els.googleBtn.addEventListener('click', googleSignIn);
+  }
 
   els.emailSignInBtn?.addEventListener('click', async () => {
     try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
@@ -230,7 +234,7 @@ function attachHandlers(){
 
   window.addEventListener('hashchange', routerFromHash);
 
-  // mobile tabbar
+  // mobile tabbar (if present)
   const mbar = document.getElementById('mobile-tabbar');
   if(mbar){
     mbar.addEventListener('click', (e)=>{
@@ -243,6 +247,7 @@ function attachHandlers(){
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
+
 function setupPendingFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
@@ -282,7 +287,7 @@ async function omdbDetailsById(imdbID){
 
 function mapMpaaToUk(mpaa){
   if(!mpaa) return '';
-  const s = String(mpaa).toUpperCase();
+  const s = mpaa.toUpperCase();
   if(s === 'G') return 'U';
   if(s === 'PG') return 'PG';
   if(s === 'PG-13') return '12A';
@@ -440,6 +445,8 @@ async function fetchByStatus(status){
 }
 
 /* =================== Rendering helpers =================== */
+
+// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -454,6 +461,7 @@ function pendingCard(f, actionsHtml=''){
   </div>`;
 }
 
+// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -482,7 +490,8 @@ function detailCard(f, actionsHtml=''){
 
 /* =================== Pending Films =================== */
 async function loadPending(){
-  const docs = await fetchByStatus('intake'); // ONLY 'intake' on Pending
+  // IMPORTANT: Pending shows ONLY 'intake'
+  const docs = await fetchByStatus('intake');
 
   let films = docs.map(d=>({ id:d.id, ...d.data() }));
   if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
@@ -505,7 +514,7 @@ async function loadPending(){
       const id = btn.dataset.next;
       const ref = db.collection('films').doc(id);
       await ref.update({ status:'review_basic' });
-      loadPending(); // disappear from Pending
+      loadPending(); // immediately disappear from pending
     });
   });
 
@@ -527,7 +536,8 @@ async function loadPending(){
     });
   });
 
-  setupPendingFilters(); // once controls exist
+  // set up toolbar listeners once
+  setupPendingFilters();
 }
 
 /* =================== BASIC =================== */
@@ -545,10 +555,7 @@ async function loadBasic(){
         <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
         <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
         <label>Disk Available?
-          <select data-edit="hasDisk" data-id="${f.id}">
-            <option value="false"${f.hasDisk?'':' selected'}>No</option>
-            <option value="true"${f.hasDisk?' selected':''}>Yes</option>
-          </select>
+          <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
         </label>
         <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
         <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
@@ -570,9 +577,7 @@ async function loadBasic(){
       await db.collection('films').doc(id).update({ [field]: val });
     });
   });
-  els.basicList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click', ()=>adminAction(b.dataset.act,b.dataset.id));
-  });
+  els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
 /* =================== VIEWING (location + jump to calendar) =================== */
@@ -587,13 +592,11 @@ async function loadViewing(){
 
   // Locations
   const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const dateISO = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
-      ? f.viewingDate.toDate().toISOString().slice(0,10)
-      : '';
+    const dateISO = f.viewingDate?.toDate?.() ? f.viewingDate.toDate().toISOString().slice(0,10) : '';
     const locOptions =
       `<option value="">Select location…</option>` +
       locs.map(l=>`<option value="${l.id}" ${f.viewingLocationId===l.id?'selected':''}>${l.name}</option>`).join('') +
@@ -787,7 +790,7 @@ async function loadCalendar(){
   const snap = await db.collection('films').doc(filmId).get();
   if(snap.exists){
     const f = snap.data();
-    if(f.viewingDate && typeof f.viewingDate.toDate === 'function'){
+    if(f.viewingDate?.toDate?.()){
       dateInp.value = f.viewingDate.toDate().toISOString().slice(0,10);
     }
     if(f.viewingTime){ timeInp.value = f.viewingTime; }
@@ -891,6 +894,7 @@ async function checkAutoOutcome(filmId){
     if(val===1) yes+=1;
     if(val===-1) no+=1;
   });
+  // New rule: 4 YES -> move to UK Distributor; 4 NO -> Discard
   if(yes>=4){
     await ref.update({ status:'uk_check' });
   } else if(no>=4){
@@ -923,9 +927,7 @@ async function loadGreen(){
   if(!docs.length){ els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>'; return; }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
-      ? f.greenAt.toDate().toISOString().slice(0,10)
-      : '—';
+    const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
@@ -953,9 +955,7 @@ async function loadNextProgramme(){
   }
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
-      ? f.greenAt.toDate().toISOString().slice(0,10)
-      : '—';
+    const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
@@ -1015,7 +1015,7 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
-    // Basic validate -> viewing
+    // Basic validate
     if(action==='basic-validate'){
       const snap = await ref.get();
       const f = snap.data() || {};
@@ -1055,6 +1055,10 @@ async function adminAction(action, filmId){
 function boot(){
   initFirebase();
   attachHandlers();
+
+  // If you need to handle redirect result explicitly, you can add:
+  // auth.getRedirectResult().catch(e => console.warn('Redirect result error:', e));
+
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
     if(!u){
