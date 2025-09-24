@@ -350,6 +350,52 @@ function showPicker(items){
   });
 }
 
+/* ===== Address lookup =====
+   Supports getaddress.io if you set window.__FLEETFILM__CONFIG.getAddressIoKey
+   Falls back to postcodes.io (limited; no full address list) */
+async function fetchAddressesByPostcode(pc){
+  const cfg = (window.__FLEETFILM__CONFIG || {});
+  const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
+  const norm = pc.trim().toUpperCase();
+
+  if (key) {
+    // getaddress.io
+    // https://api.getaddress.io/find/{postcode}?expand=true&api-key=KEY
+    const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
+    const r = await fetch(url);
+    if(!r.ok) throw new Error('Address API error');
+    const data = await r.json();
+    // data.addresses is an array of { line_1, line_2, line_3, town_or_city, county, country, postcode }
+    const out = (data.addresses || []).map(a=>{
+      const parts = [a.line_1, a.line_2, a.line_3].filter(Boolean);
+      const line = parts.join(', ');
+      const city = a.town_or_city || a.post_town || '';
+      return {
+        label: [line, city, a.postcode].filter(Boolean).join(', '),
+        address: line,
+        city: city,
+        postcode: a.postcode || norm
+      };
+    });
+    return out;
+  }
+
+  // Fallback: postcodes.io (no address list; we just return 1 “address” = postcode)
+  const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
+  const data = await r.json();
+  if(data && data.status === 200){
+    const res = data.result;
+    return [{
+      label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`,
+      address: '',
+      city: res.admin_district || res.parish || res.region || '',
+      postcode: norm
+    }];
+  }
+  return [];
+}
+
+
 /* =================== Submit (Title+Year; manual ok) =================== */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
@@ -679,62 +725,7 @@ async function loadViewing(){
 }
 
 /* ---------- Add Location Modal (with postcode lookup) ---------- */
-function showAddLocationModal(){
-  return new Promise(resolve=>{
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML =
-      '<div class="modal-head">' +
-        '<h2>Add new location</h2>' +
-        '<div style="display:flex; gap:8px">' +
-          '<button class="btn btn-ghost" id="loc-cancel">Cancel</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="form-grid">' +
-        '<label class="span-2">Location Name' +
-          '<input id="loc-name" type="text" placeholder="e.g. Church Hall">' +
-        '</label>' +
-        '<label class="span-2">Address' +
-          '<input id="loc-addr" type="text" placeholder="Street, Town">' +
-        '</label>' +
-        '<label>Postcode' +
-          '<input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">' +
-        '</label>' +
-        '<label>City' +
-          '<input id="loc-city" type="text" placeholder="(optional)">' +
-        '</label>' +
-        '<div class="actions span-2">' +
-          '<button class="btn btn-ghost" id="loc-lookup">Lookup postcode</button>' +
-          '<div class="spacer"></div>' +
-          '<button class="btn btn-primary" id="loc-save">Save</button>' +
-        '</div>' +
-        '<div id="loc-msg" class="notice hidden"></div>' +
-      '</div>';
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    const close = (result)=>{ document.body.removeChild(overlay); resolve(result); };
-
-    modal.querySelector('#loc-cancel').addEventListener('click', ()=>close(null));
-    modal.querySelector('#loc-lookup').addEventListener('click', async ()=>{
-      const pc = (document.getElementById('loc-postcode').value || '').trim();
-      if(!pc){ toast('Enter a postcode first'); return; }
-      try{
-        const r = await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(pc));
-        const data = await r.json();
-        if(data && data.status===200){
-          const res = data.result;
-          document.getElementById('loc-city').value = res.admin_district || res.parish || res.region || '';
-          toast('Found: '+res.country+(res.admin_district? ' • '+res.admin_district:''));
-        }else{
-          toast('No match for that postcode');
-        }
-      }catch{
-        toast('Lookup failed (network)');
-      }
-    });
+function showAddLocationModal
 
     modal.querySelector('#loc-save').addEventListener('click', async ()=>{
       const name = (document.getElementById('loc-name').value||'').trim();
