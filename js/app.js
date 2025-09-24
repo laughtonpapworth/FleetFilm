@@ -138,21 +138,26 @@ async function refreshCalendarOnly(){
 
 /* =================== Firebase =================== */
 function initFirebase(){
-  // If firebase-config.js already initialized the app, just attach to it.
-  if (firebase.apps && firebase.apps.length) {
-    app = firebase.app();
-  } else if (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.apiKey) {
-    app = firebase.initializeApp(window.__FLEETFILM__CONFIG);
-  } else if (window.firebaseConfig && window.firebaseConfig.apiKey) {
-    // cover another common pattern: global firebaseConfig object
-    app = firebase.initializeApp(window.firebaseConfig);
-  } else {
-    console.error('Firebase config not found. Either call firebase.initializeApp(...) in firebase-config.js or expose window.__FLEETFILM__CONFIG.');
-    alert('Missing Firebase config. Check js/firebase-config.js.');
+  // 1) If firebase-config.js already initialized the app, just attach to it.
+  if (firebase && firebase.apps && firebase.apps.length) {
+    app  = firebase.app();
+    auth = firebase.auth();
+    db   = firebase.firestore();
     return;
   }
-  auth = firebase.auth();
-  db = firebase.firestore();
+
+  // 2) Otherwise, try known globals (if your config file exports one)
+  const cfg = (window.firebaseConfig || window.__FLEETFILM__CONFIG || null);
+  if (cfg && cfg.apiKey) {
+    app  = firebase.initializeApp(cfg);
+    auth = firebase.auth();
+    db   = firebase.firestore();
+    return;
+  }
+
+  // 3) Nothing available -> clear, actionable error
+  console.error('Missing Firebase config. Check js/firebase-config.js.');
+  throw new Error('Missing Firebase config');
 }
 
 
@@ -1186,12 +1191,16 @@ async function waitForConfig(timeoutMs = 5000) {
 
 
 /* =================== Boot =================== */
-async function boot(){
-  // No waiting needed; initFirebase can attach to an existing app.
-  initFirebase();
-  if (!app) return; // initFirebase already alerted if it failed
+function boot(){
+  try {
+    initFirebase();
+  } catch (e) {
+    alert('Missing Firebase config. Check js/firebase-config.js.');
+    return; // stop boot so the page doesn’t crash further
+  }
 
   attachHandlers();
+
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
     if(!u){
@@ -1205,4 +1214,5 @@ async function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
+
 
