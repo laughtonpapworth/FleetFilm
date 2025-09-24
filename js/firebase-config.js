@@ -8,3 +8,9 @@ window.__FLEETFILM__CONFIG = {
   measurementId: "G-EB6X7G79P8",
   omdbApiKey: "3e90e2e2"
 };
+
+window.__FLEETFILM__CONFIG = {
+  // ...your firebase keys...
+  getAddressIoKey: "Ll_nRO8O302rbH7q5roJzA47908"
+};
+
