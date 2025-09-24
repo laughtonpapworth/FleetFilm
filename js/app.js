@@ -121,7 +121,10 @@ async function refreshCalendarOnly(){
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const label = `${ev.title}${ev.viewingTime?` ${ev.viewingTime`:''}${ev.viewingLocationName?` • ${ev.viewingLocationName}`:''}`;
+    const label =
+      ev.title +
+      (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
+      (ev.viewingLocationName ? (' • ' + ev.viewingLocationName) : '');
     (byISO[iso] ||= []).push(label);
   });
 
@@ -130,6 +133,7 @@ async function refreshCalendarOnly(){
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 }
+
 
 /* =================== Firebase =================== */
 function initFirebase(){
