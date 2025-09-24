@@ -561,7 +561,8 @@ async function loadBasic(){
         '<label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="'+f.id+'" placeholder="Short description">'+(f.synopsis || '')+'</textarea></label>' +
         '<div class="actions span-2">' +
           '<button class="btn btn-primary" data-act="basic-validate" data-id="'+f.id+'">Validate + → Viewing</button>' +
-          '<button class="btn btn-danger" data-act="to-discard" data-id="'+f.id}">Discard</button>' +
+          '<button class="btn btn-danger" data-act="to-discard" data-id="'+f.id+'">Discard</button>' +
+
         '</div>' +
       '</div>';
     els.basicList.insertAdjacentHTML('beforeend', detailCard(f, form));
