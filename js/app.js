@@ -1041,18 +1041,34 @@ async function adminAction(action, filmId){
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
     // Basic validate
-    if(action==='basic-validate'){
-      const snap = await ref.get();
-      const f = snap.data() || {};
-      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
-        const v = f[k];
-        return v == null || (typeof v === 'string' && v.trim().length === 0);
-      });
-      if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
-      if(missing.length){ alert('Complete Basic fields: ' + missing.join(', ')); return; }
-      await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
-    }
+ if (action === 'basic-validate') {
+  const snap = await ref.get();
+  const f = snap.data() || {};
+
+  // Validate fields locally
+  const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
+  const missing = REQUIRED_BASIC_FIELDS.filter(k => {
+    const v = f[k];
+    return v == null || (typeof v === 'string' && v.trim().length === 0);
+  });
+  if (!okRuntime) { alert('Runtime must be 150 min or less.'); return; }
+  if (missing.length) { alert('Complete Basic fields: ' + missing.join(', ')); return; }
+
+  // 1) Try to set criteria.basic_pass (ignore if rules block it)
+  try {
+    await ref.update({ 'criteria.basic_pass': true });
+  } catch (e) {
+    console.warn('criteria.basic_pass write was blocked by rules; continuing with status only.', e);
+  }
+
+  // 2) Move to viewing (should be allowed since status-only updates already work for you)
+  await ref.update({ status: 'viewing' });
+
+  // Reload the correct pages so the film appears in Viewing and disappears from Basic
+  setView('viewing'); // jump user to Viewing
+  return;
+}
+
 
     // UK decisions
     if(action==='uk-yes'){ 
