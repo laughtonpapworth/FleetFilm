@@ -1,7 +1,5 @@
-/* Fleet Film App – flow & fixes
-   Pipeline:
-     intake -> review_basic -> viewing -> voting -> uk_check -> greenlist -> next_programme -> archived
-   (Discarded possible from several points.)
+/* Fleet Film – cleaned flow
+   intake -> review_basic -> viewing -> voting -> uk_check -> greenlist -> next_programme -> archived
 */
 
 let app, auth, db;
@@ -13,8 +11,8 @@ const els = {
   nav: document.getElementById('nav'),
   signOut: document.getElementById('btn-signout'),
 
-  // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
+  // lists
+  pendingList: document.getElementById('intake-list'),
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -24,49 +22,49 @@ const els = {
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
 
-  // CALENDAR bits (either on Viewing page or dedicated Calendar page)
+  // calendar bits (dedicated page)
   calTitle: document.getElementById('cal-title'),
   calGrid: document.getElementById('cal-grid'),
   calPrev: document.getElementById('cal-prev'),
   calNext: document.getElementById('cal-next'),
 
-  // VIEWS
+  // views
   views: {
-    pending: document.getElementById('view-intake'), // “Pending Films”
-    submit: document.getElementById('view-submit'),
-    basic: document.getElementById('view-basic'),
-    viewing: document.getElementById('view-viewing'),
-    vote: document.getElementById('view-vote'),
-    uk: document.getElementById('view-uk'),
-    green: document.getElementById('view-green'),
-    nextprog: document.getElementById('view-nextprog'),
+    pending:   document.getElementById('view-intake'),
+    submit:    document.getElementById('view-submit'),
+    basic:     document.getElementById('view-basic'),
+    viewing:   document.getElementById('view-viewing'),
+    vote:      document.getElementById('view-vote'),
+    uk:        document.getElementById('view-uk'),
+    green:     document.getElementById('view-green'),
+    nextprog:  document.getElementById('view-nextprog'),
     discarded: document.getElementById('view-discarded'),
-    archive: document.getElementById('view-archive'),
-    calendar: document.getElementById('view-calendar') // OPTIONAL: if you have a separate page
+    archive:   document.getElementById('view-archive'),
+    calendar:  document.getElementById('view-calendar')
   },
 
-  // NAV BUTTONS
+  // nav buttons
   navButtons: {
-    submit: document.getElementById('nav-submit'),
-    pending: document.getElementById('nav-intake'),
-    basic: document.getElementById('nav-basic'),
-    viewing: document.getElementById('nav-viewing'),
-    vote: document.getElementById('nav-vote'),
-    uk: document.getElementById('nav-uk'),
-    green: document.getElementById('nav-green'),
-    nextprog: document.getElementById('nav-nextprog'),
+    submit:    document.getElementById('nav-submit'),
+    pending:   document.getElementById('nav-intake'),
+    basic:     document.getElementById('nav-basic'),
+    viewing:   document.getElementById('nav-viewing'),
+    vote:      document.getElementById('nav-vote'),
+    uk:        document.getElementById('nav-uk'),
+    green:     document.getElementById('nav-green'),
+    nextprog:  document.getElementById('nav-nextprog'),
     discarded: document.getElementById('nav-discarded'),
-    archive: document.getElementById('nav-archive'),
-    calendar: document.getElementById('nav-calendar') // OPTIONAL
+    archive:   document.getElementById('nav-archive'),
+    calendar:  document.getElementById('nav-calendar')
   },
 
-  // SUBMIT
+  // submit
   title: document.getElementById('f-title'),
   year: document.getElementById('f-year'),
   submitBtn: document.getElementById('btn-submit-film'),
   submitMsg: document.getElementById('submit-msg'),
 
-  // AUTH
+  // auth
   email: document.getElementById('email'),
   password: document.getElementById('password'),
   googleBtn: document.getElementById('btn-google'),
@@ -76,64 +74,54 @@ const els = {
 
 const state = { user: null, role: 'member' };
 
-/* ========= Required fields for Basic ========= */
-const REQUIRED_BASIC_FIELDS = [
-  'runtimeMinutes',  // number; must be <= 150
-  'language',        // string
-  'ukAgeRating',     // string
-  'genre',           // string
-  'country'          // string
-];
+/* ========= Required Basic fields ========= */
+const REQUIRED_BASIC_FIELDS = ['runtimeMinutes','language','ukAgeRating','genre','country'];
 
-/* =================== Calendar (Monday-first) =================== */
-let calOffset = 0; // months from "now" (0=current, -1=prev, +1=next)
-const mondayIndex = (jsDay) => (jsDay + 6) % 7; // js 0=Sun..6=Sat -> Mon=0..Sun=6
-const monthLabel = (y, m) => new Date(y, m, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+/* =================== Calendar helpers (Mon-first) =================== */
+let calOffset = 0;
+const mondayIndex = jsDay => (jsDay + 6) % 7;
+const monthLabel = (y,m) => new Date(y,m,1).toLocaleString('en-GB',{month:'long',year:'numeric'});
 
-function buildCalendarGridHTML(year, month, eventsByISO) {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 (Mon-first)
-  const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-    .map(w => `<div class="cal-wd">${w}</div>`).join('');
+function buildCalendarGridHTML(year, month, eventsByISO){
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const firstDow = mondayIndex(new Date(year, month, 1).getDay());
+  const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(w=>`<div class="cal-wd">${w}</div>`).join('');
 
   let cells = '';
-  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell empty"></div>`;
-
-  for (let d = 1; d <= daysInMonth; d++) {
+  for(let i=0;i<firstDow;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(t => `<div class="cal-pill">${t}</div>`).join('');
+    const pills = items.map(t=>`<div class="cal-pill">${t}</div>`).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
   return headers + cells;
 }
-
-function renderCalendar(events = []) {
-  if (!els.calTitle || !els.calGrid) return;
-
+function renderCalendar(events=[]){
+  if(!els.calTitle || !els.calGrid) return;
   const base = new Date();
-  const ref = new Date(base.getFullYear(), base.getMonth() + calOffset, 1);
-  const y = ref.getFullYear();
-  const m = ref.getMonth();
-
-  // Group events by YYYY-MM-DD
+  const ref = new Date(base.getFullYear(), base.getMonth()+calOffset, 1);
+  const y = ref.getFullYear(), m = ref.getMonth();
   const byISO = {};
-  events.forEach(ev => {
-    const d = ev.viewingDate?.toDate?.();
-    if (!d) return;
+  events.forEach(ev=>{
+    const d = ev.viewingDate?.toDate?.(); if(!d) return;
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const label = `${ev.title}${ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : ''}${ev.viewingTime ? ` • ${ev.viewingTime}` : ''}`;
+    const label = `${ev.title}${ev.viewingLocationName?` • ${ev.viewingLocationName}`:''}${ev.viewingTime?` • ${ev.viewingTime}`:''}`;
     (byISO[iso] ||= []).push(label);
   });
-
-  els.calTitle.textContent = monthLabel(y, m);
-  els.calGrid.innerHTML = buildCalendarGridHTML(y, m, byISO);
+  els.calTitle.textContent = monthLabel(y,m);
+  els.calGrid.innerHTML = buildCalendarGridHTML(y,m,byISO);
+}
+async function refreshCalendarOnly(){
+  const snap = await db.collection('films').where('viewingDate','!=', null).get();
+  const events = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(f=>f.viewingDate?.toDate);
+  renderCalendar(events);
 }
 
 /* =================== Firebase =================== */
 function initFirebase(){
   const cfg = window.__FLEETFILM__CONFIG;
-  if(!cfg || !cfg.apiKey) {
+  if(!cfg || !cfg.apiKey){
     alert('Missing Firebase config. Edit js/firebase-config.js');
     throw new Error('Missing Firebase config');
   }
@@ -149,31 +137,30 @@ function setView(name){
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  if(name==='pending') loadPending();
-  if(name==='basic') loadBasic();
-  if(name==='viewing') loadViewing();
-  if(name==='vote') loadVote();
-  if(name==='uk') loadUk();
-  if(name==='green') loadGreen();
-  if(name==='nextprog') loadNextProgramme();
-  if(name==='discarded') loadDiscarded();
-  if(name==='archive') loadArchive();
-  if(name==='calendar') refreshCalendarOnly(); // if you have a separate page
+  if(name==='pending')    loadPending();
+  if(name==='basic')      loadBasic();
+  if(name==='viewing')    loadViewing();
+  if(name==='vote')       loadVote();
+  if(name==='uk')         loadUk();
+  if(name==='green')      loadGreen();
+  if(name==='nextprog')   loadNextProgramme();
+  if(name==='discarded')  loadDiscarded();
+  if(name==='archive')    loadArchive();
+  if(name==='calendar')   loadCalendar();
 }
 
 function routerFromHash(){
   const h = location.hash.replace('#','') || 'submit';
-  const map = { intake:'pending', approved:'green' }; // legacy -> new
+  const map = { intake:'pending', approved:'green' }; // legacy keys → new
   setView(map[h] || h);
 }
-
 function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
   els.nav.classList.toggle('hidden', !on);
 }
 
-// Create a user doc if missing
+/* =================== Auth helpers =================== */
 async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
   const snap = await ref.get();
@@ -185,93 +172,52 @@ async function ensureUserDoc(u){
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   }
-  const role = (await ref.get()).data().role || 'member';
-  state.role = role;
+  state.role = (await ref.get()).data().role || 'member';
 }
-
 function attachHandlers(){
-  Object.values(els.navButtons).forEach(btn => {
+  Object.values(els.navButtons).forEach(btn=>{
     if(!btn) return;
-    btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
+    btn.addEventListener('click', ()=>{ location.hash = btn.dataset.view; });
   });
-  els.signOut.addEventListener('click', () => auth.signOut());
+  els.signOut.addEventListener('click', ()=>auth.signOut());
   els.submitBtn.addEventListener('click', submitFilm);
-  els.googleBtn?.addEventListener('click', async () => {
-    try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }catch(e){ alert(e.message); }
-  });
-  els.emailSignInBtn?.addEventListener('click', async () => {
-    try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
-  });
-  els.emailCreateBtn?.addEventListener('click', async () => {
-    try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
-  });
+  els.googleBtn?.addEventListener('click', async ()=>{ try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); } catch(e){ alert(e.message); }});
+  els.emailSignInBtn?.addEventListener('click', async ()=>{ try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); } catch(e){ alert(e.message); }});
+  els.emailCreateBtn?.addEventListener('click', async ()=>{ try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); } catch(e){ alert(e.message); }});
   window.addEventListener('hashchange', routerFromHash);
-
-  // mobile tabbar (if present)
-  const mbar = document.getElementById('mobile-tabbar');
-  if(mbar){
-    mbar.addEventListener('click', (e)=>{
-      const btn = e.target.closest('button[data-view]');
-      if(!btn) return;
-      location.hash = btn.dataset.view;
-    });
-  }
-
-  // calendar prev/next (exists wherever you placed the calendar UI)
-  if(els.calPrev) els.calPrev.addEventListener('click', ()=>{ calOffset -= 1; refreshCalendarOnly(); });
-  if(els.calNext) els.calNext.addEventListener('click', ()=>{ calOffset += 1; refreshCalendarOnly(); });
+  setupPendingFilters();
 }
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
-
 function setupPendingFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
   const clr = document.getElementById('filter-clear');
-  if(q){ q.addEventListener('input', ()=>{ filterState.q = q.value.trim().toLowerCase(); loadPending(); }); }
-  if(s){ s.addEventListener('change', ()=>{ filterState.status = s.value; loadPending(); }); }
-  if(clr){ clr.addEventListener('click', ()=>{ filterState.q=''; filterState.status=''; if(q) q.value=''; if(s) s.value=''; loadPending(); }); }
+  if(q)  q.addEventListener('input', ()=>{ filterState.q = q.value.trim().toLowerCase(); loadPending(); });
+  if(s)  s.addEventListener('change', ()=>{ filterState.status = s.value; loadPending(); });
+  if(clr) clr.addEventListener('click', ()=>{ filterState.q=''; filterState.status=''; if(q) q.value=''; if(s) s.value=''; loadPending(); });
 }
 
 /* =================== OMDb helpers =================== */
-function getOmdbKey(){
-  return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
-}
-
+function getOmdbKey(){ return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || ''; }
 async function omdbSearch(title, year){
-  const key = getOmdbKey();
-  if(!key) return { Search: [] };
-  const params = new URLSearchParams({ apikey: key, s: title, type: 'movie' });
+  const key = getOmdbKey(); if(!key) return { Search: [] };
+  const params = new URLSearchParams({ apikey:key, s:title, type:'movie' });
   if(year) params.set('y', String(year));
-  const url = `https://www.omdbapi.com/?${params.toString()}`;
-  const r = await fetch(url);
-  if(!r.ok) return { Search: [] };
-  const data = await r.json();
-  return data || { Search: [] };
+  const r = await fetch(`https://www.omdbapi.com/?${params.toString()}`); if(!r.ok) return { Search: [] };
+  return await r.json();
 }
-
 async function omdbDetailsById(imdbID){
-  const key = getOmdbKey();
-  if(!key) return null;
-  const params = new URLSearchParams({ apikey: key, i: imdbID, plot: 'short' });
-  const url = `https://www.omdbapi.com/?${params.toString()}`;
-  const r = await fetch(url);
-  if(!r.ok) return null;
-  const data = await r.json();
-  return (data && data.Response === 'True') ? data : null;
+  const key = getOmdbKey(); if(!key) return null;
+  const params = new URLSearchParams({ apikey:key, i:imdbID, plot:'short' });
+  const r = await fetch(`https://www.omdbapi.com/?${params.toString()}`); if(!r.ok) return null;
+  const data = await r.json(); return (data && data.Response==='True') ? data : null;
 }
-
 function mapMpaaToUk(mpaa){
-  if(!mpaa) return '';
-  const s = mpaa.toUpperCase();
-  if(s === 'G') return 'U';
-  if(s === 'PG') return 'PG';
-  if(s === 'PG-13') return '12A';
-  if(s === 'R') return '15';
-  if(s === 'NC-17') return '18';
-  if(s.includes('NOT RATED') || s === 'N/A') return 'NR';
-  return s;
+  if(!mpaa) return ''; const s = mpaa.toUpperCase();
+  if(s==='G') return 'U'; if(s==='PG') return 'PG'; if(s==='PG-13') return '12A'; if(s==='R') return '15'; if(s==='NC-17') return '18';
+  if(s.includes('NOT RATED') || s==='N/A') return 'NR'; return s;
 }
 
 /* =================== Picker (OMDb) =================== */
@@ -332,68 +278,48 @@ function showPicker(items){
   });
 }
 
-/* =================== Submit (Title+Year; manual ok) =================== */
+/* =================== Submit =================== */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
   const yearStr = (els.year.value||'').trim();
-  const year = parseInt(yearStr, 10);
+  const year = parseInt(yearStr,10);
   if(!title){ alert('Title required'); return; }
-  if(!year || yearStr.length !== 4){ alert('Enter a 4-digit Year (e.g. 1994)'); return; }
+  if(!year || yearStr.length!==4){ alert('Enter a 4-digit Year (e.g. 1994)'); return; }
 
   let picked = null;
   try{
     const res = await omdbSearch(title, year);
     const candidates = (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
     const choice = await showPicker(candidates);
-    if(choice.mode === 'cancel'){ return; }
-    if(choice.mode === 'manual'){ picked = null; }
-    if(choice.mode === 'pick' && choice.imdbID){ picked = await omdbDetailsById(choice.imdbID); }
+    if(choice.mode==='cancel') return;
+    if(choice.mode==='manual') picked = null;
+    if(choice.mode==='pick' && choice.imdbID) picked = await omdbDetailsById(choice.imdbID);
   }catch{
     const ok = confirm('Could not reach OMDb. Add the film manually?');
-    if(!ok) return;
-    picked = null;
+    if(!ok) return; picked = null;
   }
 
   const base = {
-    title, year,
-    synopsis: '',
-    status: 'intake',
+    title, year, synopsis:'', status:'intake',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    runtimeMinutes: null,
-    language: '',
-    ageRating: '',
-    ukAgeRating: '',
-    genre: '',
-    country: '',
-    hasDisk: false,
-    availability: '',
-    criteria: { basic_pass: false },
-    hasUkDistributor: null,
-    distStatus: '',
-    posterUrl: '',
-    imdbID: '',
-    // viewing scheduling
-    viewingDate: null,            // Firestore Timestamp
-    viewingTime: '',              // HH:MM (optional text)
-    viewingLocationId: '',
-    viewingLocationName: '',
-    // green list timestamp
-    greenAt: null
+    runtimeMinutes: null, language:'', ageRating:'', ukAgeRating:'', genre:'', country:'',
+    hasDisk:false, availability:'', criteria:{ basic_pass:false },
+    hasUkDistributor:null, distStatus:'', posterUrl:'', imdbID:'',
+    viewingDate:null, viewingTime:'', viewingLocationId:'', viewingLocationName:'',
+    greenAt:null
   };
 
   if(picked){
     let runtimeMinutes = null;
-    if(picked.Runtime && /\d+/.test(picked.Runtime)){
-      runtimeMinutes = parseInt(picked.Runtime.match(/\d+/)[0],10);
-    }
-    base.posterUrl = (picked.Poster && picked.Poster!=='N/A') ? picked.Poster : '';
-    base.ageRating = picked.Rated && picked.Rated!=='N/A' ? picked.Rated : '';
+    if(picked.Runtime && /\d+/.test(picked.Runtime)){ runtimeMinutes = parseInt(picked.Runtime.match(/\d+/)[0],10); }
+    base.posterUrl   = (picked.Poster && picked.Poster!=='N/A') ? picked.Poster : '';
+    base.ageRating   = picked.Rated && picked.Rated!=='N/A' ? picked.Rated : '';
     base.ukAgeRating = mapMpaaToUk(base.ageRating);
-    base.genre = picked.Genre && picked.Genre!=='N/A' ? picked.Genre : '';
-    base.language = picked.Language && picked.Language!=='N/A' ? picked.Language : '';
-    base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
-    base.imdbID = picked.imdbID || '';
+    base.genre       = picked.Genre && picked.Genre!=='N/A' ? picked.Genre : '';
+    base.language    = picked.Language && picked.Language!=='N/A' ? picked.Language : '';
+    base.country     = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
+    base.imdbID      = picked.imdbID || '';
     if(runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
     if(picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
     if(picked.Title) base.title = picked.Title;
@@ -410,10 +336,10 @@ async function submitFilm(){
   }catch(e){ alert(e.message); }
 }
 
-/* =================== Fetch helpers =================== */
+/* =================== Fetch helper =================== */
 async function fetchByStatus(status){
   const snap = await db.collection('films').where('status','==', status).get();
-  const docs = snap.docs.sort((a, b) => {
+  const docs = snap.docs.sort((a,b)=>{
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
     return tb - ta;
@@ -422,8 +348,6 @@ async function fetchByStatus(status){
 }
 
 /* =================== Rendering helpers =================== */
-
-// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -437,8 +361,6 @@ function pendingCard(f, actionsHtml=''){
     </div>
   </div>`;
 }
-
-// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -465,84 +387,43 @@ function detailCard(f, actionsHtml=''){
   </div>`;
 }
 
-/* =================== Pending Films =================== */
+/* =================== Pending Films (intake only) =================== */
 async function loadPending(){
-  // Only show films that are truly pending (submit & basic)
-  const statuses = ['intake','review_basic'];
-  let items = [];
-  for(const s of statuses){ items.push(...await fetchByStatus(s)); }
-  items.sort((a,b)=> (b.data().createdAt?.toMillis?.()||0) - (a.data().createdAt?.toMillis?.()||0));
+  // Only show truly pending items
+  let films = (await fetchByStatus('intake')).map(d=>({ id:d.id, ...d.data() }));
 
-  let films = items.map(d=>({ id:d.id, ...d.data() }));
   if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
-  if(filterState.status){ films = films.filter(x => x.status === filterState.status); }
+  // optional: if the dropdown is used, it will only show "intake" anyway
 
   els.pendingList.innerHTML = '';
   if(!films.length){ els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
 
   films.forEach(f=>{
-    const nextLabel = (f.status === 'intake') ? 'Basic Criteria' : 'Move to Viewing';
     const actions = `
-      <button class="btn btn-primary" data-next="${f.id}">${nextLabel}</button>
-      <button class="btn btn-danger" data-archive="${f.id}">Discard</button>
+      <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
+      <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
     `;
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
+  // move to Basic
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.next;
-      const ref = db.collection('films').doc(id);
-      const snap = await ref.get();
-      if(!snap.exists) return;
-      const f = snap.data();
-      try{
-        await nextStage(ref, f);
-        routerFromHash();   // refresh the view
-      }catch(e){ alert(e.message); }
+      await db.collection('films').doc(id).update({ status:'review_basic' });
+      location.hash = 'basic';
     });
   });
 
-  // “Discard” in Pending sends to discarded
-  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
+  // discard
+  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.archive;
+      const id = btn.dataset.discard;
       await db.collection('films').doc(id).update({ status:'discarded' });
-      routerFromHash();
+      loadPending();
     });
   });
 }
-
-
-
-// Move to next stage (validates Basic → Viewing)
-async function nextStage(ref, f){
-  switch(f.status){
-    case 'intake':
-      await ref.update({ status:'review_basic' }); // Submit → Basic
-      return;
-    case 'review_basic': {
-      const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-      const required = ['runtimeMinutes','language','ukAgeRating','genre','country'];
-      const missing = required.filter(k=>{
-        const v = f[k]; return v == null || (typeof v === 'string' && v.trim().length === 0);
-      });
-      if(!okRuntime) throw new Error('Runtime must be 150 min or less.');
-      if(missing.length) throw new Error('Complete Basic fields: '+missing.join(', '));
-      await ref.update({ 'criteria.basic_pass': true, status:'viewing' }); // Basic → Viewing
-      return;
-    }
-    case 'viewing':
-      await ref.update({ status:'voting' });        // Viewing → Voting
-      return;
-    case 'voting':
-      await ref.update({ status:'uk_check' });      // Voting → UK Distributor (your new flow)
-      return;
-    default:
-      return;
-  }
-}
-
 
 /* =================== BASIC =================== */
 async function loadBasic(){
@@ -559,9 +440,12 @@ async function loadBasic(){
         <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
         <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
         <label>Disk Available?
-          <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
+          <select data-edit="hasDisk" data-id="${f.id}">
+            <option value="false"${f.hasDisk?'':' selected'}>No</option>
+            <option value="true"${f.hasDisk?' selected':''}>Yes</option>
+          </select>
         </label>
-        <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
+        <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD…" /></label>
         <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
         <div class="actions span-2">
           <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → Viewing</button>
@@ -584,34 +468,23 @@ async function loadBasic(){
   els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* =================== VIEWING (calendar + location add) =================== */
+/* =================== VIEWING =================== */
 async function loadViewing(){
-  // Clear list
   els.viewingList.innerHTML = '';
-
-  // Films in viewing
   const docs = await fetchByStatus('viewing');
-
-  // Calendar at top (use any scheduled film; calendar widgets are global)
-  const scheduledSnap = await db.collection('films').where('viewingDate','!=', null).get();
-  const scheduled = scheduledSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
-  renderCalendar(scheduled);
 
   if(!docs.length){
     els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
   }
 
-  // Location options
+  // locations for dropdown
   const locSnap = await db.collection('locations').orderBy('name').get();
   const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
-  // Render each film card
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const dateISO = f.viewingDate?.toDate?.()
-      ? f.viewingDate.toDate().toISOString().slice(0,10)
-      : '';
+    const dateISO = f.viewingDate?.toDate?.() ? f.viewingDate.toDate().toISOString().slice(0,10) : '';
 
     const locOptions =
       `<option value="">Select location…</option>` +
@@ -638,14 +511,13 @@ async function loadViewing(){
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
-  // Handle location dropdown changes (including "Add new")
+  // location dropdown handler
   els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const id = sel.dataset.id;
       const val = sel.value;
 
       if(val === '__add'){
-        // Open modal to add
         const newLoc = await showAddLocationModal();
         if(newLoc){
           await db.collection('films').doc(id).update({
@@ -653,55 +525,38 @@ async function loadViewing(){
             viewingLocationName: newLoc.name || ''
           });
         }else{
-          // revert to blank
           sel.value = '';
         }
-        // Refresh list
         loadViewing();
         return;
       }
 
       if(!val){
-        // cleared selection
-        await db.collection('films').doc(id).update({
-          viewingLocationId: '',
-          viewingLocationName: ''
-        });
-        refreshCalendarOnly();
+        await db.collection('films').doc(id).update({ viewingLocationId:'', viewingLocationName:'' });
         return;
       }
-
-      // normal selection
-      const locDoc = await db.collection('locations').doc(val).get();
-      const name = locDoc.exists ? (locDoc.data().name || '') : '';
-      await db.collection('films').doc(id).update({
-        viewingLocationId: val,
-        viewingLocationName: name
-      });
-      refreshCalendarOnly();
+      const ldoc = await db.collection('locations').doc(val).get();
+      const name = ldoc.exists ? (ldoc.data().name || '') : '';
+      await db.collection('films').doc(id).update({ viewingLocationId: val, viewingLocationName: name });
     });
   });
 
-  // Buttons: set-datetime (goes to Calendar), to-voting, to-discard
+  // buttons
   els.viewingList.querySelectorAll('button[data-act]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.id;
       const act = btn.dataset.act;
-
-      if(act === 'set-datetime'){
-        // Remember which film we’re scheduling, then navigate to Calendar page
-       sessionStorage.setItem('scheduleTarget', filmId);
-location.hash = 'calendar';
+      if(act==='set-datetime'){
+        sessionStorage.setItem('scheduleTarget', id);
+        location.hash = 'calendar';
         return;
       }
-
-      // Other actions go via adminAction
       await adminAction(act, id);
     });
   });
 }
 
-/* ---------- Add Location Modal (ONE definition) ---------- */
+/* ---------- Add Location Modal (postcode lookup) ---------- */
 function showAddLocationModal(){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -742,7 +597,6 @@ function showAddLocationModal(){
     const close = (result)=>{ document.body.removeChild(overlay); resolve(result); };
 
     modal.querySelector('#loc-cancel').addEventListener('click', ()=>close(null));
-
     modal.querySelector('#loc-lookup').addEventListener('click', async ()=>{
       const pc = (document.getElementById('loc-postcode').value || '').trim();
       if(!pc){ toast('Enter a postcode first'); return; }
@@ -760,7 +614,6 @@ function showAddLocationModal(){
         toast('Lookup failed (network)');
       }
     });
-
     modal.querySelector('#loc-save').addEventListener('click', async ()=>{
       const name = (document.getElementById('loc-name').value||'').trim();
       const address = (document.getElementById('loc-addr').value||'').trim();
@@ -773,9 +626,7 @@ function showAddLocationModal(){
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         close({ id: ref.id, name });
-      }catch(e){
-        toast(e.message || 'Could not save');
-      }
+      }catch(e){ toast(e.message || 'Could not save'); }
     });
 
     function toast(msg){
@@ -787,21 +638,18 @@ function showAddLocationModal(){
   });
 }
 
-/* =================== VOTING (4 YES to proceed; show who voted) =================== */
+/* =================== VOTING =================== */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
   if(!docs.length){ els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
   const my = state.user.uid;
-
-  // simple in-memory cache for user display names
   const nameCache = {};
 
   for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
     const vs = await db.collection('films').doc(f.id).collection('votes').get();
-    let yes=0, no=0;
-    const voters = [];
+    let yes=0, no=0; const voters=[];
     vs.forEach(v=>{
       const d = v.data(); const val = d.value;
       if(val===1) yes+=1;
@@ -809,7 +657,6 @@ async function loadVote(){
       voters.push({ uid:v.id, value:val, at:d.createdAt });
     });
 
-    // lookup user names
     const listVotes = await (async ()=>{
       if(!voters.length) return '';
       const parts = [];
@@ -825,14 +672,13 @@ async function loadVote(){
       return parts.join(' ');
     })();
 
-    // my current vote
     let myVoteVal = 0;
     const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
     if(vSnap.exists) myVoteVal = vSnap.data().value || 0;
 
     const actions = `
       <div class="actions" role="group" aria-label="Vote buttons">
-        <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
+        <button class="btn btn-ghost" data-vote="1"  data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
         <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
       </div>
       <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>
@@ -844,11 +690,10 @@ async function loadVote(){
     els.voteList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   }
 
-  els.voteList.querySelectorAll('button[data-vote]').forEach(btn => {
-    btn.addEventListener('click', () => castVote(btn.dataset.id, parseInt(btn.dataset.vote,10)));
+  els.voteList.querySelectorAll('button[data-vote]').forEach(btn=>{
+    btn.addEventListener('click', ()=>castVote(btn.dataset.id, parseInt(btn.dataset.vote,10)));
   });
 }
-
 async function castVote(filmId, value){
   try{
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
@@ -858,208 +703,8 @@ async function castVote(filmId, value){
     loadVote();
   }catch(e){ alert(e.message); }
 }
-
 async function checkAutoOutcome(filmId){
   const ref = db.collection('films').doc(filmId);
   const vs = await ref.collection('votes').get();
   let yes=0, no=0;
-  vs.forEach(v=>{
-    const val = v.data().value;
-    if(val===1) yes+=1;
-    if(val===-1) no+=1;
-  });
-  // New rule: 4 YES -> move to UK Distributor; 4 NO -> Discard
-  if(yes>=4){
-    await ref.update({ status:'uk_check' });
-  } else if(no>=4){
-    await ref.update({ status:'discarded' });
-  }
-}
-
-/* =================== UK CHECK (after Voting) =================== */
-async function loadUk(){
-  const docs = await fetchByStatus('uk_check');
-  els.ukList.innerHTML = '';
-  if(!docs.length){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
- const actions = `
-  <div class="actions">
-    <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor Confirmed ✓</button>
-    <button class="btn btn-warn" data-act="uk-no"  data-id="${f.id}">No Distributor</button>
-    <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
-  </div>
-`;
-
-    els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
-  });
-  els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
-}
-
-/* =================== GREEN LIST =================== */
-async function loadGreen(){
-  const docs = await fetchByStatus('greenlist');
-  els.greenList.innerHTML = '';
-  if(!docs.length){ els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>'; return; }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
-const actions = `
-  <div class="actions">
-    <span class="badge">Green since: ${greenAt}</span>
-    <button class="btn btn-primary" data-act="to-nextprog" data-id="${f.id}">→ Next Programme</button>
-    <button class="btn"           data-act="to-archive"  data-id="${f.id}">Archive</button>
-    <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
-  </div>
-`;
-
-    els.greenList.insertAdjacentHTML('beforeend', detailCard(f, actions));
-  });
-  els.greenList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
-}
-
-/* =================== NEXT PROGRAMME =================== */
-async function loadNextProgramme(){
-  const docs = await fetchByStatus('next_programme');
-  els.nextProgList.innerHTML = `
-    <div class="actions" style="margin-bottom:8px">
-      <button class="btn btn-danger" id="btn-archive-all">Archive all</button>
-    </div>
-  `;
-  document.getElementById('btn-archive-all').addEventListener('click', archiveAllNextProg);
-
-  if(!docs.length){
-    els.nextProgList.insertAdjacentHTML('beforeend', '<div class="notice">No films in Next Programme.</div>');
-    return;
-  }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const greenAt = f.greenAt?.toDate?.() ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
-    const actions = `
-      <div class="actions">
-        <span class="badge">Green since: ${greenAt}</span>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
-    els.nextProgList.insertAdjacentHTML('beforeend', detailCard(f, actions));
-  });
-  els.nextProgList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
-}
-
-async function archiveAllNextProg(){
-  const docs = await fetchByStatus('next_programme');
-  const batch = db.batch();
-  docs.forEach(d=>{
-    const ref = db.collection('films').doc(d.id);
-    batch.update(ref, { status:'archived', archivedFrom:'next_programme' });
-  });
-  await batch.commit();
-  loadNextProgramme();
-}
-
-/* =================== DISCARDED =================== */
-async function loadDiscarded(){
-  const docs = await fetchByStatus('discarded');
-  els.discardedList.innerHTML = '';
-  if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const actions = `
-      <div class="actions">
-        <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Pending</button>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
-    els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
-  });
-  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
-}
-
-/* =================== ARCHIVE =================== */
-async function loadArchive(){
-  const docs = await fetchByStatus('archived');
-  els.archiveList.innerHTML = '';
-  if(!docs.length){ els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>'; return; }
-  docs.forEach(doc=>{
-    const f = { id: doc.id, ...doc.data() };
-    const origin = f.archivedFrom || '';
-    const right = origin ? `<span class="badge">${origin}</span>` : '';
-    els.archiveList.insertAdjacentHTML('beforeend', pendingCard(f, right));
-  });
-}
-
-/* =================== Admin actions =================== */
-async function adminAction(action, filmId){
-  const ref = db.collection('films').doc(filmId);
-  try{
-    if(action==='to-discard') await ref.update({ status:'discarded' });
-    if(action==='restore')    await ref.update({ status:'intake' });
-    if(action==='to-voting')  await ref.update({ status:'voting' });
-
-   if(action==='basic-validate'){
-  const snap = await ref.get();
-  const f = snap.data() || {};
-  const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-  const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
-    const v = f[k];
-    return v == null || (typeof v === 'string' && v.trim().length === 0);
-  });
-  if(!okRuntime){ alert('Runtime must be 150 min or less.'); return; }
-  if(missing.length){ alert('Complete Basic fields: '+missing.join(', ')); return; }
-
-  await ref.update({ 'criteria.basic_pass': true, status:'viewing' });
-  // jump user to Viewing so they see it immediately
-  location.hash = 'viewing';
-  return;
-}
-
-    // UK decisions
-    if(action==='uk-yes'){ 
-      await ref.update({ hasUkDistributor:true, status:'greenlist', greenAt: firebase.firestore.FieldValue.serverTimestamp() });
-    }
-    if(action==='uk-no'){ 
-      await ref.update({ hasUkDistributor:false, status:'discarded' });
-    }
-
-    // Green list move
-    if(action==='to-nextprog'){ await ref.update({ status:'next_programme' }); }
-
-    // Archive / provenance
-    if(action==='to-archive'){
-      const snap2 = await ref.get();
-      const cur = (snap2.exists && snap2.data().status) || '';
-      await ref.update({ status:'archived', archivedFrom: cur || '' });
-    }
-
-    routerFromHash();
-  }catch(e){ alert(e.message); }
-}
-
-/* =================== Calendar data refresh =================== */
-async function refreshCalendarOnly(){
-  const snap = await db.collection('films').where('viewingDate','!=', null).get();
-  const items = snap.docs.map(d=>({ id:d.id, ...d.data() })).filter(f=>f.viewingDate?.toDate);
-  renderCalendar(items);
-}
-
-/* =================== Boot =================== */
-function boot(){
-  initFirebase();
-  attachHandlers();
-  setupPendingFilters();
-  auth.onAuthStateChanged(async (u) => {
-    state.user = u;
-    if(!u){
-      showSignedIn(false);
-      location.hash = 'submit';
-      return;
-    }
-    await ensureUserDoc(u);
-    showSignedIn(true);
-    routerFromHash();
-    // If a calendar is visible on first load, render it
-    if((els.views.viewing && !els.views.viewing.classList.contains('hidden')) ||
-       (els.views.calendar && !els.views.calendar.classList.contains('hidden'))){
-      refreshCalendarOnly();
-    }
-  });
-}
-document.addEventListener('DOMContentLoaded', boot);
+ 
