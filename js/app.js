@@ -1167,8 +1167,26 @@ async function adminAction(action, filmId){
   }catch(e){ alert(e.message); }
 }
 
+async function waitForConfig(timeoutMs = 5000) {
+  const start = Date.now();
+  while (!(window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.apiKey)) {
+    if (Date.now() - start > timeoutMs) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return window.__FLEETFILM__CONFIG;
+}
+
+
 /* =================== Boot =================== */
-function boot(){
+async function boot(){
+  // Wait for firebase-config.js to populate window.__FLEETFILM__CONFIG
+  const cfg = await waitForConfig(5000);
+  if(!cfg || !cfg.apiKey){
+    console.error('firebase-config.js not loaded before app boot. Check script order/network.');
+    alert('Missing Firebase config. Ensure js/firebase-config.js loads before this page finishes.');
+    return; // prevent throwing so the page can show the message gracefully
+  }
+
   initFirebase();
   attachHandlers();
   auth.onAuthStateChanged(async (u) => {
