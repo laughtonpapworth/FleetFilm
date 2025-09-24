@@ -204,9 +204,30 @@ function attachHandlers(){
   });
   els.signOut.addEventListener('click', () => auth.signOut());
   els.submitBtn.addEventListener('click', submitFilm);
+
+  // Google sign-in: popup with redirect fallback (fixes COOP issue)
   els.googleBtn?.addEventListener('click', async () => {
-    try{ await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }catch(e){ alert(e.message); }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch(_) {}
+    try {
+      await auth.signInWithPopup(provider);
+    } catch (e) {
+      const msg = String(e?.message || '');
+      const code = String(e?.code || '');
+      const popupBlocked =
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        /Cross-Origin-Opener-Policy/i.test(msg) ||
+        /blocked the window\.closed/i.test(msg);
+      if (popupBlocked) {
+        try { await auth.signInWithRedirect(provider); return; }
+        catch (e2) { alert('Sign-in via redirect failed: ' + (e2?.message || e2)); }
+      } else {
+        alert('Sign-in failed: ' + (e?.message || e));
+      }
+    }
   });
+
   els.emailSignInBtn?.addEventListener('click', async () => {
     try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
   });
