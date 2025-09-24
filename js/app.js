@@ -503,7 +503,7 @@ async function loadPending(){
   films.forEach(f=>{
     const actions = 
       '<button class="btn btn-primary" data-next="'+f.id+'">Basic Criteria</button>' +
-      '<button class="btn btn-danger" data-discard="'+f.id+'">Discard</button>' +
+      '<button class="btn btn-danger" data-act="to-discard" data-id="'+f.id+'">Discard</button>' +
       '<button class="btn" data-archive="'+f.id+'">Archive</button>';
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
