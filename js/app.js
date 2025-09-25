@@ -137,40 +137,54 @@ async function refreshCalendarOnly(){
 
 
 /* =================== Firebase =================== */
-/** Be liberal: use an existing initialized app if present; else initialize from any known global config. */
-function initFirebase(){
-  // A) If already initialized elsewhere (e.g. in firebase-config.js) just attach:
+function haveFirebaseSDK(){
+  try { return !!(window.firebase && firebase.auth && firebase.firestore); }
+  catch { return false; }
+}
+
+/** Try to bind to an existing app or init from a global config. */
+function tryInitFirebaseFromEnvironment(){
+  // Case A: app already initialized by firebase-config.js
   if (firebase && firebase.apps && firebase.apps.length) {
     app  = firebase.app();
     auth = firebase.auth();
     db   = firebase.firestore();
-    return;
+    return true;
   }
-  // B) Otherwise read config from either commonly used global variable:
-  const cfg = (window.firebaseConfig || window.__FLEETFILM__CONFIG || null);
+  // Case B: a config object is provided globally (attachable)
+  const cfg = (window.__FLEETFILM__CONFIG || window.firebaseConfig || window.FIREBASE_CONFIG || null);
   if (cfg && cfg.apiKey) {
     app  = firebase.initializeApp(cfg);
     auth = firebase.auth();
     db   = firebase.firestore();
-    return;
+    return true;
   }
-  // C) Nothing available
-  throw new Error('Missing Firebase config');
+  return false;
 }
 
-/** Wait briefly for either an initialized app OR a config object to appear. */
-async function waitForFirebaseReady(timeoutMs = 4000){
+/** Wait for SDK + either initialized app or usable config (up to timeoutMs). */
+async function ensureFirebaseReady(timeoutMs = 8000){
   const start = Date.now();
-  while (true) {
-    const hasApp = !!(window.firebase && firebase.apps && firebase.apps.length);
-    const hasCfg = !!(window.firebaseConfig && window.firebaseConfig.apiKey) ||
-                   !!(window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.apiKey);
-    if (hasApp || hasCfg) return true;
+
+  // 1) wait for SDK
+  while (!haveFirebaseSDK()) {
     if (Date.now() - start > timeoutMs) return false;
-    await new Promise(r=>setTimeout(r,50));
+    await new Promise(r => setTimeout(r, 30));
   }
+
+  // 2) try immediately
+  if (tryInitFirebaseFromEnvironment()) return true;
+
+  // 3) poll briefly for late-arriving config or init done by firebase-config.js
+  while (Date.now() - start <= timeoutMs) {
+    if (tryInitFirebaseFromEnvironment()) return true;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return false;
 }
 
+
+/* =================== Router / Views =================== */
 function setView(name){
   // Nav active state
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
@@ -373,22 +387,17 @@ function showPicker(items){
   });
 }
 
-/* ===== Address lookup =====
-   Supports getaddress.io if you set window.__FLEETFILM__CONFIG.getAddressIoKey
-   Falls back to postcodes.io (limited; no full address list) */
+/* ===== Address lookup ===== */
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
   const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
   const norm = pc.trim().toUpperCase();
 
   if (key) {
-    // getaddress.io
-    // https://api.getaddress.io/find/{postcode}?expand=true&api-key=KEY
     const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
     const r = await fetch(url);
     if(!r.ok) throw new Error('Address API error');
     const data = await r.json();
-    // data.addresses is an array of { line_1, line_2, line_3, town_or_city, county, country, postcode }
     const out = (data.addresses || []).map(a=>{
       const parts = [a.line_1, a.line_2, a.line_3].filter(Boolean);
       const line = parts.join(', ');
@@ -403,7 +412,6 @@ async function fetchAddressesByPostcode(pc){
     return out;
   }
 
-  // Fallback: postcodes.io (no address list; we just return 1 “address” = postcode)
   const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
   const data = await r.json();
   if(data && data.status === 200){
@@ -558,7 +566,6 @@ function detailCard(f, actionsHtml=''){
 
 /* =================== Pending Films =================== */
 async function loadPending(){
-  // IMPORTANT: Pending shows ONLY 'intake'
   const docs = await fetchByStatus('intake');
 
   let films = docs.map(d=>({ id:d.id, ...d.data() }));
@@ -582,7 +589,7 @@ async function loadPending(){
       const id = btn.dataset.next;
       const ref = db.collection('films').doc(id);
       await ref.update({ status:'review_basic' });
-      loadPending(); // immediately disappear from pending
+      loadPending();
     });
   });
 
@@ -604,7 +611,6 @@ async function loadPending(){
     });
   });
 
-  // set up toolbar listeners once
   setupPendingFilters();
 }
 
@@ -865,7 +871,6 @@ function showAddLocationModal(){
 
 /* =================== CALENDAR PAGE (editable: date, time, location) =================== */
 async function loadCalendar(){
-  // If your calendar page doesn't already contain the header+grid markup, build it now:
   const wrap = document.getElementById('calendar-list');
   if(wrap && !document.getElementById('cal-grid')){
     wrap.innerHTML = `
@@ -889,20 +894,16 @@ async function loadCalendar(){
       </div>`;
   }
 
-  // render month grid
   await refreshCalendarOnly();
 
-  // Back button
   const back = document.getElementById('cal-back');
   if(back){ back.onclick = ()=>{ location.hash = 'viewing'; }; }
 
-  // Month nav
   const prev = document.getElementById('cal-prev');
   const next = document.getElementById('cal-next');
   if(prev) prev.onclick = ()=>{ calOffset -= 1; refreshCalendarOnly(); };
   if(next) next.onclick = ()=>{ calOffset += 1; refreshCalendarOnly(); };
 
-  // Scheduling editor
   const filmId = sessionStorage.getItem('scheduleTarget');
   const dateInp = document.getElementById('cal-date');
   const timeInp = document.getElementById('cal-time');
@@ -1192,18 +1193,10 @@ async function adminAction(action, filmId){
 
 /* =================== Boot =================== */
 async function boot(){
-  // Wait briefly for either an initialized app or a config object to appear
-  const ready = await waitForFirebaseReady(4000);
+  const ready = await ensureFirebaseReady(8000);
   if(!ready){
     alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
-    return;
-  }
-
-  try {
-    initFirebase();
-  } catch (e) {
-    alert('Missing Firebase config. Check js/firebase-config.js.');
-    return;
+    return; // stop boot so the page doesn’t crash further
   }
 
   attachHandlers();
