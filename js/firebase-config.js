@@ -1,16 +1,17 @@
 
 window.__FLEETFILM__CONFIG = {
   // --- Firebase required keys ---
-  apiKey: "AIzaSyXXXXXXX-REPLACE_WITH_YOURS",
-  authDomain: "fleetfilm-12345.firebaseapp.com",
-  projectId: "fleetfilm-12345",
-  storageBucket: "fleetfilm-12345.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456",
+  apiKey: "AIzaSyDb3RwlWUutBwBg8BGwAPkMG0Iv1_of5Mg",
+  authDomain: "fleetfilm-8829e.firebaseapp.com",
+  projectId: "fleetfilm-8829e",
+  storageBucket: "fleetfilm-8829e.appspot.com",
+  messagingSenderId: "464150585740",
+  appId: "1:464150585740:web:a047ae9b57ce149bea76a9",
+  measurementId: "G-EB6X7G79P8",
 
   // --- Optional keys used by app.js ---
-  omdbApiKey: "YOUR_OMDB_KEY",            // if you use OMDb
-  getAddressIoKey: "YOUR_GETADDRESS_KEY"  // if you use getAddress.io
+  omdbApiKey: "3e90e2e2",            // if you use OMDb
+  getAddressIoKey: "Ll_nRO8O302rbH7q5roJzA47908"  // if you use getAddress.io
 };
 
 // (Optional init if not done elsewhere — safe to include)
