@@ -138,49 +138,47 @@ async function refreshCalendarOnly(){
 
 /* =================== Firebase =================== */
 function haveFirebaseSDK(){
-  try { return !!(window.firebase && firebase.auth && firebase.firestore); }
-  catch { return false; }
+  try { return !!window.firebase; } catch { return false; }
 }
 
-/** Try to bind to an existing app or init from a global config. */
-function tryInitFirebaseFromEnvironment(){
-  // Case A: app already initialized by firebase-config.js
-  if (firebase && firebase.apps && firebase.apps.length) {
+function getFirebaseConfig(){
+  return window.__FLEETFILM__CONFIG || window.firebaseConfig || window.FIREBASE_CONFIG || null;
+}
+
+async function waitForFirebaseAndConfig(timeoutMs = 10000){
+  const start = Date.now();
+
+  // wait for SDK global
+  while (!haveFirebaseSDK()) {
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise(r => setTimeout(r, 25));
+  }
+
+  // accept either an already-initialized app or an available config object
+  while (true) {
+    if (firebase.apps && firebase.apps.length > 0) return true;
+    if (getFirebaseConfig()) return true;
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
+function initFirebaseOnce(){
+  // Already initialized by firebase-config.js?
+  if (firebase.apps && firebase.apps.length > 0) {
     app  = firebase.app();
     auth = firebase.auth();
     db   = firebase.firestore();
-    return true;
+    return;
   }
-  // Case B: a config object is provided globally (attachable)
-  const cfg = (window.__FLEETFILM__CONFIG || window.firebaseConfig || window.FIREBASE_CONFIG || null);
-  if (cfg && cfg.apiKey) {
-    app  = firebase.initializeApp(cfg);
-    auth = firebase.auth();
-    db   = firebase.firestore();
-    return true;
+  // Initialize from a provided global config
+  const cfg = getFirebaseConfig();
+  if (!cfg || !cfg.apiKey) {
+    throw new Error('Missing Firebase config');
   }
-  return false;
-}
-
-/** Wait for SDK + either initialized app or usable config (up to timeoutMs). */
-async function ensureFirebaseReady(timeoutMs = 8000){
-  const start = Date.now();
-
-  // 1) wait for SDK
-  while (!haveFirebaseSDK()) {
-    if (Date.now() - start > timeoutMs) return false;
-    await new Promise(r => setTimeout(r, 30));
-  }
-
-  // 2) try immediately
-  if (tryInitFirebaseFromEnvironment()) return true;
-
-  // 3) poll briefly for late-arriving config or init done by firebase-config.js
-  while (Date.now() - start <= timeoutMs) {
-    if (tryInitFirebaseFromEnvironment()) return true;
-    await new Promise(r => setTimeout(r, 50));
-  }
-  return false;
+  app  = firebase.initializeApp(cfg);
+  auth = firebase.auth();
+  db   = firebase.firestore();
 }
 
 
@@ -1193,10 +1191,17 @@ async function adminAction(action, filmId){
 
 /* =================== Boot =================== */
 async function boot(){
-  const ready = await ensureFirebaseReady(8000);
-  if(!ready){
+  const ok = await waitForFirebaseAndConfig(10000);
+  if(!ok){
     alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
-    return; // stop boot so the page doesn’t crash further
+    return;
+  }
+
+  try {
+    initFirebaseOnce();
+  } catch (e) {
+    alert('Missing Firebase config. Check js/firebase-config.js.');
+    return;
   }
 
   attachHandlers();
