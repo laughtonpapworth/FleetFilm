@@ -137,16 +137,16 @@ async function refreshCalendarOnly(){
 
 
 /* =================== Firebase =================== */
+/** Be liberal: use an existing initialized app if present; else initialize from any known global config. */
 function initFirebase(){
-  // 1) If firebase-config.js already initialized the app, just attach to it.
+  // A) If already initialized elsewhere (e.g. in firebase-config.js) just attach:
   if (firebase && firebase.apps && firebase.apps.length) {
     app  = firebase.app();
     auth = firebase.auth();
     db   = firebase.firestore();
     return;
   }
-
-  // 2) Otherwise, try known globals (if your config file exports one)
+  // B) Otherwise read config from either commonly used global variable:
   const cfg = (window.firebaseConfig || window.__FLEETFILM__CONFIG || null);
   if (cfg && cfg.apiKey) {
     app  = firebase.initializeApp(cfg);
@@ -154,12 +154,22 @@ function initFirebase(){
     db   = firebase.firestore();
     return;
   }
-
-  // 3) Nothing available -> clear, actionable error
-  console.error('Missing Firebase config. Check js/firebase-config.js.');
+  // C) Nothing available
   throw new Error('Missing Firebase config');
 }
 
+/** Wait briefly for either an initialized app OR a config object to appear. */
+async function waitForFirebaseReady(timeoutMs = 4000){
+  const start = Date.now();
+  while (true) {
+    const hasApp = !!(window.firebase && firebase.apps && firebase.apps.length);
+    const hasCfg = !!(window.firebaseConfig && window.firebaseConfig.apiKey) ||
+                   !!(window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.apiKey);
+    if (hasApp || hasCfg) return true;
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise(r=>setTimeout(r,50));
+  }
+}
 
 function setView(name){
   // Nav active state
@@ -1180,23 +1190,20 @@ async function adminAction(action, filmId){
   }catch(e){ alert(e.message); }
 }
 
-async function waitForConfig(timeoutMs = 5000) {
-  const start = Date.now();
-  while (!(window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.apiKey)) {
-    if (Date.now() - start > timeoutMs) break;
-    await new Promise(r => setTimeout(r, 50));
-  }
-  return window.__FLEETFILM__CONFIG;
-}
-
-
 /* =================== Boot =================== */
-function boot(){
+async function boot(){
+  // Wait briefly for either an initialized app or a config object to appear
+  const ready = await waitForFirebaseReady(4000);
+  if(!ready){
+    alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
+    return;
+  }
+
   try {
     initFirebase();
   } catch (e) {
     alert('Missing Firebase config. Check js/firebase-config.js.');
-    return; // stop boot so the page doesn’t crash further
+    return;
   }
 
   attachHandlers();
@@ -1214,5 +1221,3 @@ function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
-
-
