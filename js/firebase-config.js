@@ -1,16 +1,20 @@
-window.__FLEETFILM__CONFIG = {
-  apiKey: "AIzaSyDb3RwlWUutBwBg8BGwAPkMG0Iv1_of5Mg",
-  authDomain: "fleetfilm-8829e.firebaseapp.com",
-  projectId: "fleetfilm-8829e",
-  storageBucket: "fleetfilm-8829e.appspot.com",
-  messagingSenderId: "464150585740",
-  appId: "1:464150585740:web:a047ae9b57ce149bea76a9",
-  measurementId: "G-EB6X7G79P8",
-  omdbApiKey: "3e90e2e2"
-};
 
 window.__FLEETFILM__CONFIG = {
-  // ...your firebase keys...
-  getAddressIoKey: "Ll_nRO8O302rbH7q5roJzA47908"
+  // --- Firebase required keys ---
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+
+  // --- Optional keys used by app.js ---
+  omdbApiKey: "YOUR_OMDB_KEY",          // if you have one
+  getAddressIoKey: "YOUR_GETADDRESS_KEY" // if you have one
 };
+
+// (Optional but safe) If you prefer to initialize here, do it once:
+if (window.firebase && firebase.apps && !firebase.apps.length) {
+  firebase.initializeApp(window.__FLEETFILM__CONFIG);
+}
 
