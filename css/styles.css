@@ -149,8 +149,8 @@ textarea{min-height:110px}
   display:flex; align-items:center; justify-content:center; z-index:100;
 }
 .modal{
-  width:min(860px,94vw); max-height:86vh; overflow:auto;
-  background:#fff; border:1px solid var(--border); border-radius:16px;
+  width:min(900px,94vw); max-height:86vh; overflow:auto;
+  background:#fff; border:1px solid var(--border); border-radius:18px;
   box-shadow:0 18px 48px rgba(0,0,0,.18); padding:14px;
 }
 .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px}
@@ -167,6 +167,7 @@ footer{
   background:#ffffffcc; backdrop-filter: blur(6px);
   border-top:1px solid var(--border);
   padding:10px 12px; font-size:13px; color:var(--muted); text-align:center;
+  z-index:80; /* stay below mobile tabbar */
 }
 
 /* === Detail views (Basic, UK, Viewing, Voting, Green, Discarded) === */
@@ -200,26 +201,58 @@ footer{
   padding:4px 0;
 }
 .cal-cell{
-  min-height:84px; border:1px solid var(--border); border-radius:10px;
-  padding:8px;
+  min-height:100px; border:1px solid var(--border); border-radius:12px;
+  padding:10px;
   background:#fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.03);
 }
 .cal-cell.empty{ background:#fafafa }
-.cal-day{ font-weight:800; font-size:12px; color:var(--muted); margin-bottom:6px }
+.cal-day{ font-weight:800; font-size:12px; color:var(--muted); margin-bottom:8px }
+
+/* Calendar pills: clickable, colourful, truncate long titles */
 .cal-pill{
-  font-size:12px; font-weight:700; border:1px solid var(--border);
-  border-radius:999px; padding:4px 8px; margin:2px 0; display:inline-block;
+  display:block;
+  width:100%;
+  font-size:13px;
+  line-height:1.25;
+  font-weight:800;
+  border-radius:10px;
+  padding:8px 10px;
+  margin:6px 0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  cursor:pointer;
+  border:1px solid transparent;
+  transition: transform .07s ease, box-shadow .07s ease, filter .07s ease;
 }
+.cal-pill:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.08);
+  filter: brightness(1.02);
+}
+/* Rotate friendly colours so multiple events read clearly */
+.cal-cell .cal-pill:nth-of-type(6n+1){ background:#e0f2fe; border-color:#bae6fd; color:#0b3a5b; } /* sky */
+.cal-cell .cal-pill:nth-of-type(6n+2){ background:#dcfce7; border-color:#bbf7d0; color:#064e3b; } /* green */
+.cal-cell .cal-pill:nth-of-type(6n+3){ background:#fde68a; border-color:#fcd34d; color:#5a3f00; } /* amber */
+.cal-cell .cal-pill:nth-of-type(6n+4){ background:#fce7f3; border-color:#fbcfe8; color:#6b214b; } /* pink */
+.cal-cell .cal-pill:nth-of-type(6n+5){ background:#e9d5ff; border-color:#d8b4fe; color:#4b217a; } /* purple */
+.cal-cell .cal-pill:nth-of-type(6n+6){ background:#fee2e2; border-color:#fecaca; color:#7f1d1d; } /* red */
+
+a.cal-pill { text-decoration:none; }
+.cal-pill.is-empty{ background:#f7f7f7; border-color:#eee; color:#8b8b8b; }
 
 /* ===== Mobile bottom tab bar ===== */
 .mobile-tabbar{
-  position:fixed; bottom:0; left:0; right:0; z-index:60;
-  background:#ffffff; border-top:1px solid var(--border);
+  position:fixed; bottom:0; left:0; right:0; z-index:120;
+  background:#ffffffee; border-top:1px solid var(--border);
+  backdrop-filter: blur(6px);
   display:none; grid-template-columns: repeat(5, 1fr); gap:0;
 }
 .mobile-tabbar button{
-  appearance:none; background:#fff; border:none; padding:10px 6px;
+  appearance:none; background:#fff0; border:none; padding:10px 6px;
   font-size:12px; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:4px;
+  font-weight:800;
 }
 .mobile-tabbar .ico{font-size:18px; line-height:1}
 .mobile-tabbar button.active{color:var(--accent-ink); font-weight:800}
@@ -231,9 +264,9 @@ footer{
 }
 @media (max-width: 760px){
   .header{ position: static; background: transparent; border-bottom: none; padding-bottom: 6px; }
-  .nav{ display:none }
-  .mobile-tabbar{ display:grid }
-  .container{ padding-bottom: 120px }
+  .nav{ display:none !important; }
+  .mobile-tabbar{ display:grid; }
+  .container{ padding-bottom: 140px !important; } /* keep content clear of tabbar */
 
   .item{grid-template-columns:1fr; gap:14px}
   .item-right{justify-content:flex-start}
@@ -247,8 +280,12 @@ footer{
   .detail-card .item-right{ margin-top: 8px; }
   .detail-card .form-grid{ grid-template-columns: 1fr; }
   .detail-card .form-grid .span-2{ grid-column: auto; }
+
+  /* Hide tip footer on small screens so it doesn't clash with the tabbar */
+  footer{ display:none; }
 }
 @media (max-width: 420px){
   .poster{width:88px; height:132px}
   .kv{grid-template-columns:110px 1fr}
+  .card{ padding:14px; }
 }
