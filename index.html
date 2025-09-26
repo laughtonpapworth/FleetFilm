@@ -35,6 +35,7 @@
     <button id="nav-discarded" data-view="discarded">Discarded</button>
     <button id="nav-archive"   data-view="archive">Archive</button>
     <button id="nav-calendar"  data-view="calendar">Calendar</button>
+    <button id="nav-addresses" class="btn" data-view="addresses">Addresses</button>
   </nav>
 
   <button id="btn-signout" class="btn btn-ghost">Sign out</button>
@@ -164,6 +165,32 @@
         <div class="cal-grid" id="cal-grid"></div>
       </div>
 
+      <!-- Addresses (dedicated page) -->
+      <section id="view-addresses" class="hidden">
+  <div class="card">
+    <h2>Saved Addresses</h2>
+    <div id="addresses-admin-msg" class="notice hidden"></div>
+    <div class="actions" style="margin-bottom:8px">
+      <button id="addr-refresh" class="btn">Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="addresses-table">
+        <thead>
+          <tr>
+            <th style="width:22%">Name</th>
+            <th style="width:30%">Address</th>
+            <th style="width:18%">City</th>
+            <th style="width:14%">Postcode</th>
+            <th style="width:16%">Actions</th>
+          </tr>
+        </thead>
+        <tbody><!-- filled by JS --></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+
       <!-- Editor prefilled when coming from Viewing > Set date & time -->
       <div class="card" style="padding:14px; margin-top:10px">
         <div class="form-grid">
@@ -197,5 +224,6 @@
     });
   }
 </script>
+  <div id="modal-root"></div>
 </body>
 </html>
