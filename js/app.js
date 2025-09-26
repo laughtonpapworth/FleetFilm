@@ -37,7 +37,7 @@ const els = {
     discarded:  document.getElementById('view-discarded'),
     archive:    document.getElementById('view-archive'),
     calendar:   document.getElementById('view-calendar'),
-    addresses:  document.getElementById('view-addresses'),   // NEW: admin addresses
+    addresses:  document.getElementById('view-addresses'),   // admin addresses
   },
 
   // NAV BUTTONS
@@ -53,7 +53,7 @@ const els = {
     discarded:  document.getElementById('nav-discarded'),
     archive:    document.getElementById('nav-archive'),
     calendar:   document.getElementById('nav-calendar'),
-    addresses:  document.getElementById('nav-addresses'),    // NEW: admin addresses
+    addresses:  document.getElementById('nav-addresses'),    // admin addresses
   },
 
   // SUBMIT
@@ -89,12 +89,12 @@ function monthLabel(year, month){
   return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-/** Build the calendar grid HTML (headers + padded days) using Monday as first day.
- *  Expects eventsByISO to be { 'YYYY-MM-DD': [{id, label}, ...], ... }
+/** Build the calendar grid HTML (headers + padded days).
+ *  eventsByISO: { 'YYYY-MM-DD': [{id, label}], ... }
  */
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 where 0=Mon
+  const firstDow = mondayIndex(new Date(year, month, 1).getDay());
   const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
     .map(w => `<div class="cal-wd">${w}</div>`).join('');
 
@@ -112,23 +112,20 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   return headers + cells;
 }
 
-/** Render the calendar (title + grid) into the Calendar page. */
+/** Render the calendar (title + grid) */
 async function refreshCalendarOnly(){
   const titleEl = document.getElementById('cal-title');
   const gridEl  = document.getElementById('cal-grid');
   if(!titleEl || !gridEl) return;
 
-  // Get all scheduled films (any status) with a viewingDate
   const snap = await db.collection('films').where('viewingDate','!=', null).get();
   const events = snap.docs.map(d=>({ id:d.id, ...d.data() }))
     .filter(f=>f.viewingDate && typeof f.viewingDate.toDate === 'function');
 
-  // Group by YYYY-MM-DD
   const byISO = {};
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    // label: Title + time + locationName (name only; blank if none)
     const label =
       ev.title +
       (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
@@ -141,7 +138,7 @@ async function refreshCalendarOnly(){
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 
-  // Attach delegated click handler once to open quick view / edit
+  // Click to open quick view
   if (!gridEl.dataset.bound) {
     gridEl.addEventListener('click', (e)=>{
       const btn = e.target.closest('.cal-pill[data-film-id]');
@@ -157,21 +154,15 @@ async function refreshCalendarOnly(){
 function haveFirebaseSDK(){
   try { return !!window.firebase; } catch { return false; }
 }
-
 function getFirebaseConfig(){
   return window.__FLEETFILM__CONFIG || window.firebaseConfig || window.FIREBASE_CONFIG || null;
 }
-
 async function waitForFirebaseAndConfig(timeoutMs = 10000){
   const start = Date.now();
-
-  // wait for SDK global
   while (!haveFirebaseSDK()) {
     if (Date.now() - start > timeoutMs) return false;
     await new Promise(r => setTimeout(r, 25));
   }
-
-  // accept either an already-initialized app or an available config object
   while (true) {
     if (firebase.apps && firebase.apps.length > 0) return true;
     if (getFirebaseConfig()) return true;
@@ -179,20 +170,15 @@ async function waitForFirebaseAndConfig(timeoutMs = 10000){
     await new Promise(r => setTimeout(r, 50));
   }
 }
-
 function initFirebaseOnce(){
-  // Already initialized by firebase-config.js?
   if (firebase.apps && firebase.apps.length > 0) {
     app  = firebase.app();
     auth = firebase.auth();
     db   = firebase.firestore();
     return;
   }
-  // Initialize from a provided global config
   const cfg = getFirebaseConfig();
-  if (!cfg || !cfg.apiKey) {
-    throw new Error('Missing Firebase config');
-  }
+  if (!cfg || !cfg.apiKey) throw new Error('Missing Firebase config');
   app  = firebase.initializeApp(cfg);
   auth = firebase.auth();
   db   = firebase.firestore();
@@ -201,15 +187,12 @@ function initFirebaseOnce(){
 
 /* =================== Router / Views =================== */
 function setView(name){
-  // Nav active state
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
   if(els.navButtons[name]) els.navButtons[name].classList.add('active');
 
-  // Show/hide views
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  // Route
   if(name==='pending')    return loadPending();
   if(name==='basic')      return loadBasic();
   if(name==='viewing')    return loadViewing();
@@ -220,15 +203,13 @@ function setView(name){
   if(name==='discarded')  return loadDiscarded();
   if(name==='archive')    return loadArchive();
   if(name==='calendar')   return loadCalendar();
-  if(name==='addresses')  return loadAddressesAdmin(); // NEW
+  if(name==='addresses')  return loadAddressesAdmin();
 }
-
 function routerFromHash(){
   const h = (location.hash.replace('#','') || 'submit');
   const map = { intake:'pending', approved:'green' }; // legacy -> new
   setView(map[h] || h);
 }
-
 function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
@@ -260,7 +241,6 @@ function attachHandlers(){
   els.signOut.addEventListener('click', () => auth.signOut());
   els.submitBtn.addEventListener('click', submitFilm);
 
-  // ---- Auth buttons (popup then safe redirect fallback) ----
   if(els.googleBtn){
     els.googleBtn.addEventListener('click', async () => {
       try{
@@ -284,7 +264,6 @@ function attachHandlers(){
 
   window.addEventListener('hashchange', routerFromHash);
 
-  // mobile tabbar (if present)
   const mbar = document.getElementById('mobile-tabbar');
   if(mbar){
     mbar.addEventListener('click', (e)=>{
@@ -297,7 +276,6 @@ function attachHandlers(){
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
-
 function setupPendingFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
@@ -311,7 +289,6 @@ function setupPendingFilters(){
 function getOmdbKey(){
   return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
 }
-
 async function omdbSearch(title, year){
   const key = getOmdbKey();
   if(!key) return { Search: [] };
@@ -323,7 +300,6 @@ async function omdbSearch(title, year){
   const data = await r.json();
   return data || { Search: [] };
 }
-
 async function omdbDetailsById(imdbID){
   const key = getOmdbKey();
   if(!key) return null;
@@ -334,7 +310,6 @@ async function omdbDetailsById(imdbID){
   const data = await r.json();
   return (data && data.Response === 'True') ? data : null;
 }
-
 function mapMpaaToUk(mpaa){
   if(!mpaa) return '';
   const s = String(mpaa).toUpperCase();
@@ -406,7 +381,7 @@ function showPicker(items){
 /* ===== Address lookup ===== */
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
-  const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
+  const key = cfg.getAddressIoKey || cfg.getaddressIoKey;
   const norm = pc.trim().toUpperCase();
 
   if (key) {
@@ -489,7 +464,7 @@ async function submitFilm(){
     posterUrl: '',
     imdbID: '',
     // viewing scheduling
-    viewingDate: null,            // Timestamp
+    viewingDate: null,
     viewingTime: '',
     viewingLocationId: '',
     viewingLocationName: '',
@@ -537,8 +512,6 @@ async function fetchByStatus(status){
 }
 
 /* =================== Rendering helpers =================== */
-
-// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -552,8 +525,6 @@ function pendingCard(f, actionsHtml=''){
     </div>
   </div>`;
 }
-
-// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -599,7 +570,6 @@ async function loadPending(){
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  // Move to Basic
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.next;
@@ -608,8 +578,6 @@ async function loadPending(){
       loadPending();
     });
   });
-
-  // Discard from pending
   els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.discard;
@@ -617,8 +585,6 @@ async function loadPending(){
       loadPending();
     });
   });
-
-  // Archive from pending
   els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.archive;
@@ -670,7 +636,7 @@ async function loadBasic(){
   els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* =================== VIEWING (location + editable date/time + jump to calendar) =================== */
+/* =================== VIEWING =================== */
 async function loadViewing(){
   els.viewingList.innerHTML = '';
 
@@ -680,7 +646,6 @@ async function loadViewing(){
     return;
   }
 
-  // Locations
   const locSnap = await db.collection('locations').orderBy('name').get();
   const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
@@ -722,7 +687,7 @@ async function loadViewing(){
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
-  // Location dropdown changes (including "Add new")
+  // Location changes (+ add new)
   els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const id = sel.dataset.id;
@@ -759,7 +724,7 @@ async function loadViewing(){
     });
   });
 
-  // Inline date/time edits
+  // Date/time edits
   els.viewingList.querySelectorAll('input[data-edit="viewingDate"]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
@@ -785,7 +750,12 @@ async function loadViewing(){
 
       if(act === 'set-datetime'){
         sessionStorage.setItem('scheduleTarget', id);
-        location.hash = 'calendar';
+        // If we're already on calendar, trigger a direct reload; otherwise navigate.
+        if ((location.hash.replace('#','') || '') === 'calendar') {
+          await loadCalendar();
+        } else {
+          location.hash = 'calendar';
+        }
         return;
       }
       await adminAction(act, id);
@@ -793,7 +763,7 @@ async function loadViewing(){
   });
 }
 
-/* ---------- Add Location Modal (with postcode lookup + selectable results) ---------- */
+/* ---------- Add Location Modal ---------- */
 function showAddLocationModal(){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -885,7 +855,7 @@ function showAddLocationModal(){
   });
 }
 
-/* =================== CALENDAR PAGE (editable: date, time, location) =================== */
+/* =================== CALENDAR PAGE =================== */
 async function loadCalendar(){
   const wrap = document.getElementById('calendar-list');
   if(wrap && !document.getElementById('cal-grid')){
@@ -905,7 +875,10 @@ async function loadCalendar(){
           <label>Date<input id="cal-date" type="date"></label>
           <label>Time (optional)<input id="cal-time" type="time"></label>
           <label class="span-2">Location<input id="cal-loc" type="text"></label>
-          <div class="actions span-2"><button class="btn btn-primary" id="cal-save">Save schedule</button></div>
+          <div class="actions span-2">
+            <button class="btn btn-primary" id="cal-save">Save schedule</button>
+            <button class="btn btn-danger" id="cal-delete">Delete from calendar</button>
+          </div>
         </div>
       </div>`;
   }
@@ -925,9 +898,11 @@ async function loadCalendar(){
   const timeInp = document.getElementById('cal-time');
   const locInp  = document.getElementById('cal-loc');
   const saveBtn = document.getElementById('cal-save');
+  const delBtn  = document.getElementById('cal-delete');
 
   if(!filmId){
     if(saveBtn) saveBtn.disabled = true;
+    if(delBtn)  delBtn.disabled  = true;
     return;
   }
 
@@ -958,9 +933,24 @@ async function loadCalendar(){
       location.hash = 'viewing';
     };
   }
+
+  if(delBtn){
+    delBtn.onclick = async ()=>{
+      if(!confirm('Remove this film from the calendar?')) return;
+      await db.collection('films').doc(filmId).update({
+        viewingDate: null,
+        viewingTime: '',
+        viewingLocationName: '',
+        viewingLocationId: ''
+      });
+      await refreshCalendarOnly();
+      sessionStorage.removeItem('scheduleTarget');
+      location.hash = 'viewing';
+    };
+  }
 }
 
-/* =================== Quick view modal for calendar pills =================== */
+/* =================== Quick view modal (calendar pill) =================== */
 async function openFilmQuickView(filmId){
   const root = document.getElementById('modal-root');
   if(!root) return;
@@ -992,24 +982,44 @@ async function openFilmQuickView(filmId){
         <div class="actions">
           <button class="btn btn-primary" id="fv-edit">Edit schedule</button>
           <button class="btn" id="fv-open">Open full details</button>
+          <button class="btn btn-danger" id="fv-delete">Delete from calendar</button>
         </div>
       </div>
     </div>`;
 
   const close = ()=>{ root.innerHTML=''; };
   root.querySelector('#fv-close').addEventListener('click', close);
-  root.querySelector('#fv-edit').addEventListener('click', ()=>{
+
+  // Works even if you're already on #calendar
+  root.querySelector('#fv-edit').addEventListener('click', async ()=>{
     sessionStorage.setItem('scheduleTarget', filmId);
     close();
-    location.hash = 'calendar';
+    if ((location.hash.replace('#','') || '') === 'calendar') {
+      await loadCalendar();
+    } else {
+      location.hash = 'calendar';
+    }
   });
+
   root.querySelector('#fv-open').addEventListener('click', ()=>{
     close();
     location.hash = 'viewing';
   });
+
+  root.querySelector('#fv-delete').addEventListener('click', async ()=>{
+    if(!confirm('Remove this film from the calendar?')) return;
+    await db.collection('films').doc(filmId).update({
+      viewingDate: null,
+      viewingTime: '',
+      viewingLocationName: '',
+      viewingLocationId: ''
+    });
+    await refreshCalendarOnly();
+    close();
+  });
 }
 
-/* =================== VOTING (4 YES to proceed; show who voted) =================== */
+/* =================== VOTING =================== */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -1089,7 +1099,6 @@ async function checkAutoOutcome(filmId){
     if(val===1) yes+=1;
     if(val===-1) no+=1;
   });
-  // 4 YES -> move to UK Distributor; 4 NO -> Discard
   if(yes>=4){
     await ref.update({ status:'uk_check' });
   } else if(no>=4){
@@ -1097,7 +1106,7 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-/* =================== UK CHECK (after Voting) =================== */
+/* =================== UK CHECK =================== */
 async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
@@ -1205,7 +1214,13 @@ async function loadArchive(){
 
 /* =================== Admin-only Addresses page =================== */
 async function loadAddressesAdmin(){
-  const list = document.getElementById('addresses-list');
+  // Find a sensible container even if the exact id differs
+  const list =
+    document.getElementById('addresses-list') ||
+    document.querySelector('#view-addresses #addresses-list') ||
+    document.querySelector('#view-addresses .list') ||
+    document.getElementById('address-list');
+
   if (!list) return;
   list.innerHTML = '';
 
@@ -1214,14 +1229,17 @@ async function loadAddressesAdmin(){
     return;
   }
 
-  const snap = await db.collection('locations').orderBy('name').get();
+  // Fetch then sort client-side to avoid index/field issues
+  const snap = await db.collection('locations').get();
   if (snap.empty) {
     list.innerHTML = '<div class="notice">No saved addresses yet.</div>';
     return;
   }
 
-  snap.forEach(doc=>{
-    const l = { id: doc.id, ...doc.data() };
+  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+
+  rows.forEach(l=>{
     const name = l.name || '(no name)';
     const line = [l.address, l.city, l.postcode].filter(Boolean).join(', ');
     const html = `
@@ -1254,7 +1272,7 @@ async function loadAddressesAdmin(){
     });
   });
 
-  // Edit (prompt-based minimal editor)
+  // Edit
   list.querySelectorAll('button[data-edit]').forEach(b=>{
     b.addEventListener('click', async ()=>{
       const id = b.dataset.edit;
@@ -1326,6 +1344,13 @@ async function adminAction(action, filmId){
 
 /* =================== Boot =================== */
 async function boot(){
+  // Inject tiny calendar pill wrapping style so text wraps nicely.
+  const style = document.createElement('style');
+  style.textContent = `
+    .cal-pill{display:block;white-space:normal;word-break:break-word;line-height:1.25;margin:3px 0}
+  `;
+  document.head.appendChild(style);
+
   const ok = await waitForFirebaseAndConfig(10000);
   if(!ok){
     alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
