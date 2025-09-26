@@ -14,7 +14,7 @@ const els = {
   signOut: document.getElementById('btn-signout'),
 
   // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'),
+  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -23,6 +23,7 @@ const els = {
   nextProgList: document.getElementById('nextprog-list'),
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
+  addressesList: document.getElementById('addresses-list'),
 
   // VIEWS
   views: {
@@ -37,7 +38,7 @@ const els = {
     discarded:  document.getElementById('view-discarded'),
     archive:    document.getElementById('view-archive'),
     calendar:   document.getElementById('view-calendar'),
-    addresses:  document.getElementById('view-addresses'),
+    addresses:  document.getElementById('view-addresses'), // admin-only
   },
 
   // NAV BUTTONS
@@ -53,7 +54,7 @@ const els = {
     discarded:  document.getElementById('nav-discarded'),
     archive:    document.getElementById('nav-archive'),
     calendar:   document.getElementById('nav-calendar'),
-    addresses:  document.getElementById('nav-addresses'),
+    addresses:  document.getElementById('nav-addresses'), // admin-only
   },
 
   // SUBMIT
@@ -82,19 +83,17 @@ const REQUIRED_BASIC_FIELDS = [
 ];
 
 /* =================== Calendar (Monday-first) =================== */
-let calOffset = 0;
+let calOffset = 0; // months from "now" (0=current, -1=prev, +1=next)
 
-function mondayIndex(jsDay){ return (jsDay + 6) % 7; }
+function mondayIndex(jsDay){ return (jsDay + 6) % 7; } // JS: Sun=0..Sat=6 -> Mon=0..Sun=6
 function monthLabel(year, month){
   return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-/** Build the calendar grid HTML (headers + padded days).
- *  eventsByISO: { 'YYYY-MM-DD': [{id, label}], ... }
- */
+/** Build the calendar grid HTML (headers + padded days) using Monday as first day. */
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDow = mondayIndex(new Date(year, month, 1).getDay());
+  const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 where 0=Mon
   const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
     .map(w => `<div class="cal-wd">${w}</div>`).join('');
 
@@ -104,24 +103,24 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(it =>
-      `<button class="cal-pill" data-film-id="${it.id}" title="${it.label}">${it.label}</button>`
-    ).join('');
+    const pills = items.map(t => t.html).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
   return headers + cells;
 }
 
-/** Render the calendar (title + grid) */
+/** Render the calendar (title + grid) into the Calendar page. */
 async function refreshCalendarOnly(){
   const titleEl = document.getElementById('cal-title');
   const gridEl  = document.getElementById('cal-grid');
   if(!titleEl || !gridEl) return;
 
+  // Get all scheduled films (any status) with a viewingDate
   const snap = await db.collection('films').where('viewingDate','!=', null).get();
   const events = snap.docs.map(d=>({ id:d.id, ...d.data() }))
     .filter(f=>f.viewingDate && typeof f.viewingDate.toDate === 'function');
 
+  // Group by YYYY-MM-DD
   const byISO = {};
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
@@ -130,7 +129,11 @@ async function refreshCalendarOnly(){
       ev.title +
       (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
       (ev.viewingLocationName ? (' • ' + ev.viewingLocationName) : '');
-    (byISO[iso] ||= []).push({ id: ev.id, label });
+    const pill = `
+      <button class="cal-pill" data-film="${ev.id}" title="Open ${ev.title}">
+        ${escapeHtml(label)}
+      </button>`;
+    (byISO[iso] ||= []).push({ html: pill });
   });
 
   const now = new Date();
@@ -138,31 +141,96 @@ async function refreshCalendarOnly(){
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 
-  // Click to open quick view
-  if (!gridEl.dataset.bound) {
-    gridEl.addEventListener('click', (e)=>{
-      const btn = e.target.closest('.cal-pill[data-film-id]');
-      if (!btn) return;
-      openFilmQuickView(btn.getAttribute('data-film-id'));
-    });
-    gridEl.dataset.bound = '1';
-  }
+  // Make pills clickable (open small modal)
+  gridEl.addEventListener('click', e=>{
+    const btn = e.target.closest('[data-film]');
+    if(!btn) return;
+    openCalendarItemModal(btn.getAttribute('data-film'));
+  }, { once:true }); // re-attached on every refresh
 }
 
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+}
+
+/* Small modal for a calendar item */
+function openCalendarItemModal(filmId){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-label="Calendar item">
+      <div class="modal-head">
+        <h2>Edit schedule</h2>
+        <button class="btn btn-ghost" type="button" id="calit-close">Close</button>
+      </div>
+      <div class="actions" style="gap:8px">
+        <button id="calit-edit" class="btn btn-primary" type="button">Edit schedule</button>
+        <button id="calit-open" class="btn" type="button">Open full details</button>
+        <button id="calit-del" class="btn btn-danger" type="button">Delete schedule</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close(){ document.body.removeChild(overlay); }
+
+  overlay.querySelector('#calit-close').onclick = close;
+
+  overlay.querySelector('#calit-edit').onclick = async ()=>{
+    close();
+    // open calendar view’s editor prefilled
+    sessionStorage.setItem('scheduleTarget', filmId);
+    await loadCalendar(); // ensures editor exists and is filled
+    document.getElementById('calendar-card')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    document.getElementById('cal-date')?.focus();
+  };
+
+  overlay.querySelector('#calit-open').onclick = ()=>{
+    close();
+    location.hash = 'viewing';
+    // optionally highlight later (after view loads)
+    setTimeout(()=>highlightFilmCard(filmId), 300);
+  };
+
+  overlay.querySelector('#calit-del').onclick = async ()=>{
+    try{
+      await db.collection('films').doc(filmId).update({
+        viewingDate: null,
+        viewingTime: '',
+        viewingLocationId: '',
+        viewingLocationName: ''
+      });
+      close();
+      await refreshCalendarOnly();
+    }catch(e){ alert(e.message); }
+  };
+}
+
+function highlightFilmCard(id){
+  const card = document.querySelector(`[data-film-card="${id}"]`);
+  if(!card) return;
+  card.style.boxShadow = '0 0 0 3px #c98a00';
+  setTimeout(()=>card.style.boxShadow='', 1800);
+}
 
 /* =================== Firebase =================== */
 function haveFirebaseSDK(){
   try { return !!window.firebase; } catch { return false; }
 }
+
 function getFirebaseConfig(){
   return window.__FLEETFILM__CONFIG || window.firebaseConfig || window.FIREBASE_CONFIG || null;
 }
+
 async function waitForFirebaseAndConfig(timeoutMs = 10000){
   const start = Date.now();
+
+  // wait for SDK global
   while (!haveFirebaseSDK()) {
     if (Date.now() - start > timeoutMs) return false;
     await new Promise(r => setTimeout(r, 25));
   }
+
+  // accept either an already-initialized app or an available config object
   while (true) {
     if (firebase.apps && firebase.apps.length > 0) return true;
     if (getFirebaseConfig()) return true;
@@ -170,15 +238,20 @@ async function waitForFirebaseAndConfig(timeoutMs = 10000){
     await new Promise(r => setTimeout(r, 50));
   }
 }
+
 function initFirebaseOnce(){
+  // Already initialized by firebase-config.js?
   if (firebase.apps && firebase.apps.length > 0) {
     app  = firebase.app();
     auth = firebase.auth();
     db   = firebase.firestore();
     return;
   }
+  // Initialize from a provided global config
   const cfg = getFirebaseConfig();
-  if (!cfg || !cfg.apiKey) throw new Error('Missing Firebase config');
+  if (!cfg || !cfg.apiKey) {
+    throw new Error('Missing Firebase config');
+  }
   app  = firebase.initializeApp(cfg);
   auth = firebase.auth();
   db   = firebase.firestore();
@@ -187,12 +260,15 @@ function initFirebaseOnce(){
 
 /* =================== Router / Views =================== */
 function setView(name){
+  // Nav active state
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
   if(els.navButtons[name]) els.navButtons[name].classList.add('active');
 
+  // Show/hide views
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
   if(els.views[name]) els.views[name].classList.remove('hidden');
 
+  // Route
   if(name==='pending')    return loadPending();
   if(name==='basic')      return loadBasic();
   if(name==='viewing')    return loadViewing();
@@ -205,11 +281,13 @@ function setView(name){
   if(name==='calendar')   return loadCalendar();
   if(name==='addresses')  return loadAddressesAdmin();
 }
+
 function routerFromHash(){
   const h = (location.hash.replace('#','') || 'submit');
-  const map = { intake:'pending', approved:'green' };
+  const map = { intake:'pending', approved:'green' }; // legacy -> new
   setView(map[h] || h);
 }
+
 function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
@@ -231,6 +309,11 @@ async function ensureUserDoc(u){
   const roleSnap = await ref.get();
   const role = (roleSnap.exists && roleSnap.data() && roleSnap.data().role) || 'member';
   state.role = role;
+
+  // Show/hide the admin-only Addresses nav button
+  if(els.navButtons.addresses){
+    els.navButtons.addresses.classList.toggle('hidden', role!=='admin');
+  }
 }
 
 function attachHandlers(){
@@ -238,9 +321,10 @@ function attachHandlers(){
     if(!btn) return;
     btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
   });
-  els.signOut.addEventListener('click', () => auth.signOut());
-  els.submitBtn.addEventListener('click', submitFilm);
+  els.signOut?.addEventListener('click', () => auth.signOut());
+  els.submitBtn?.addEventListener('click', submitFilm);
 
+  // ---- Auth buttons (popup then safe redirect fallback) ----
   if(els.googleBtn){
     els.googleBtn.addEventListener('click', async () => {
       try{
@@ -264,6 +348,7 @@ function attachHandlers(){
 
   window.addEventListener('hashchange', routerFromHash);
 
+  // mobile tabbar (if present)
   const mbar = document.getElementById('mobile-tabbar');
   if(mbar){
     mbar.addEventListener('click', (e)=>{
@@ -276,6 +361,7 @@ function attachHandlers(){
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
+
 function setupPendingFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
@@ -289,6 +375,7 @@ function setupPendingFilters(){
 function getOmdbKey(){
   return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
 }
+
 async function omdbSearch(title, year){
   const key = getOmdbKey();
   if(!key) return { Search: [] };
@@ -300,6 +387,7 @@ async function omdbSearch(title, year){
   const data = await r.json();
   return data || { Search: [] };
 }
+
 async function omdbDetailsById(imdbID){
   const key = getOmdbKey();
   if(!key) return null;
@@ -310,6 +398,7 @@ async function omdbDetailsById(imdbID){
   const data = await r.json();
   return (data && data.Response === 'True') ? data : null;
 }
+
 function mapMpaaToUk(mpaa){
   if(!mpaa) return '';
   const s = String(mpaa).toUpperCase();
@@ -333,8 +422,8 @@ function showPicker(items){
       '<div class="modal-head">' +
         '<h2>Select the correct film</h2>' +
         '<div style="display:flex; gap:8px; align-items:center;">' +
-          '<button id="ff-picker-manual" class="btn btn-ghost">Add manually</button>' +
-          '<button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>' +
+          '<button id="ff-picker-manual" class="btn btn-ghost" type="button">Add manually</button>' +
+          '<button id="ff-picker-cancel" class="btn btn-ghost" type="button">Cancel</button>' +
         '</div>' +
       '</div>' +
       '<div id="ff-picker-list" class="modal-list"></div>';
@@ -355,7 +444,7 @@ function showPicker(items){
             '<div class="modal-row-title">'+it.Title+' ('+it.Year+')</div>' +
             '<div class="modal-row-sub">'+(it.Type || 'movie')+' • '+it.imdbID+'</div>' +
           '</div>' +
-          '<button data-id="'+it.imdbID+'" class="btn btn-primary">Select</button>';
+          '<button data-id="'+it.imdbID+'" class="btn btn-primary" type="button">Select</button>';
         list.appendChild(row);
       });
     }
@@ -381,7 +470,7 @@ function showPicker(items){
 /* ===== Address lookup ===== */
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
-  const key = cfg.getAddressIoKey || cfg.getaddressIoKey;
+  const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
   const norm = pc.trim().toUpperCase();
 
   if (key) {
@@ -464,7 +553,7 @@ async function submitFilm(){
     posterUrl: '',
     imdbID: '',
     // viewing scheduling
-    viewingDate: null,
+    viewingDate: null,            // Timestamp
     viewingTime: '',
     viewingLocationId: '',
     viewingLocationName: '',
@@ -512,10 +601,12 @@ async function fetchByStatus(status){
 }
 
 /* =================== Rendering helpers =================== */
+
+// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  return `<div class="card">
+  return `<div class="card" data-film-card="${f.id}">
     <div class="item">
       <div class="item-left">
         ${poster}
@@ -525,10 +616,12 @@ function pendingCard(f, actionsHtml=''){
     </div>
   </div>`;
 }
+
+// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  return `<div class="card detail-card">
+  return `<div class="card detail-card" data-film-card="${f.id}">
     <div class="item item--split">
       <div class="item-left">
         ${poster}
@@ -570,6 +663,7 @@ async function loadPending(){
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
+  // Move to Basic
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.next;
@@ -578,6 +672,8 @@ async function loadPending(){
       loadPending();
     });
   });
+
+  // Discard from pending
   els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.discard;
@@ -585,6 +681,8 @@ async function loadPending(){
       loadPending();
     });
   });
+
+  // Archive from pending
   els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.archive;
@@ -636,7 +734,7 @@ async function loadBasic(){
   els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
 }
 
-/* =================== VIEWING =================== */
+/* =================== VIEWING (location + editable date/time + jump to calendar) =================== */
 async function loadViewing(){
   els.viewingList.innerHTML = '';
 
@@ -646,6 +744,7 @@ async function loadViewing(){
     return;
   }
 
+  // Locations
   const locSnap = await db.collection('locations').orderBy('name').get();
   const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
@@ -657,7 +756,7 @@ async function loadViewing(){
     let locOptions = '<option value="">Select location…</option>';
     locs.forEach(l=>{
       const sel = (f.viewingLocationId===l.id) ? ' selected' : '';
-      locOptions += `<option value="${l.id}"${sel}>${l.name}</option>`;
+      locOptions += `<option value="${l.id}"${sel}>${escapeHtml(l.name||'')}</option>`;
     });
     locOptions += '<option value="__add">+ Add new location…</option>';
 
@@ -687,7 +786,7 @@ async function loadViewing(){
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
-  // Location changes (+ add new)
+  // Location dropdown changes (including "Add new")
   els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       const id = sel.dataset.id;
@@ -724,7 +823,7 @@ async function loadViewing(){
     });
   });
 
-  // Date/time edits
+  // Inline date/time edits
   els.viewingList.querySelectorAll('input[data-edit="viewingDate"]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
@@ -750,11 +849,7 @@ async function loadViewing(){
 
       if(act === 'set-datetime'){
         sessionStorage.setItem('scheduleTarget', id);
-        if ((location.hash.replace('#','') || '') === 'calendar') {
-          await loadCalendar();
-        } else {
-          location.hash = 'calendar';
-        }
+        location.hash = 'calendar';
         return;
       }
       await adminAction(act, id);
@@ -762,7 +857,7 @@ async function loadViewing(){
   });
 }
 
-/* ---------- Add Location Modal ---------- */
+/* ---------- Add Location Modal (with postcode lookup + selectable results) ---------- */
 function showAddLocationModal(){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -771,7 +866,7 @@ function showAddLocationModal(){
       <div class="modal">
         <div class="modal-head">
           <h2>Add new location</h2>
-          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
+          <button class="btn btn-ghost" id="loc-cancel" type="button">Cancel</button>
         </div>
         <div class="form-grid">
           <label class="span-2">Location Name
@@ -781,7 +876,7 @@ function showAddLocationModal(){
             <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">
           </label>
           <div class="actions">
-            <button class="btn" id="loc-lookup">Lookup</button>
+            <button class="btn" id="loc-lookup" type="button">Lookup</button>
           </div>
           <div class="span-2" id="loc-options"></div>
           <label class="span-2">Address
@@ -793,7 +888,7 @@ function showAddLocationModal(){
           <div id="loc-msg" class="notice hidden span-2"></div>
           <div class="actions span-2">
             <div class="spacer"></div>
-            <button class="btn btn-primary" id="loc-save">Save</button>
+            <button class="btn btn-primary" id="loc-save" type="button">Save</button>
           </div>
         </div>
       </div>`;
@@ -854,18 +949,19 @@ function showAddLocationModal(){
   });
 }
 
-/* =================== CALENDAR PAGE =================== */
+/* =================== CALENDAR PAGE (editable: date, time, location) =================== */
 async function loadCalendar(){
+  // Build editor area if missing
   const wrap = document.getElementById('calendar-list');
   if(wrap && !document.getElementById('cal-grid')){
     wrap.innerHTML = `
       <div class="card" id="calendar-card">
         <div class="cal-head">
-          <button class="btn btn-ghost" id="cal-back" aria-label="Back">◀ Back</button>
+          <button class="btn btn-ghost" id="cal-back" aria-label="Back" type="button">◀ Back</button>
           <div class="cal-title" id="cal-title">Month YYYY</div>
           <div>
-            <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month">◀</button>
-            <button class="btn btn-ghost" id="cal-next" aria-label="Next month">▶</button>
+            <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month" type="button">◀</button>
+            <button class="btn btn-ghost" id="cal-next" aria-label="Next month" type="button">▶</button>
           </div>
         </div>
         <div class="cal-grid" id="cal-grid"></div>
@@ -873,62 +969,58 @@ async function loadCalendar(){
         <div class="form-grid">
           <label>Date<input id="cal-date" type="date"></label>
           <label>Time (optional)<input id="cal-time" type="time"></label>
-
-          <label>Location (saved)
-            <select id="cal-loc-select"></select>
+          <label>Location
+            <select id="cal-loc-sel"></select>
           </label>
-          <label>Or custom name
-            <input id="cal-loc" type="text" placeholder="Leave blank to use saved name">
+          <label class="span-2">Or enter a custom location name
+            <input id="cal-loc-free" type="text" placeholder="(optional)">
           </label>
-
-          <div class="actions span-2">
-            <button class="btn btn-primary" id="cal-save">Save schedule</button>
-            <button class="btn btn-danger" id="cal-delete">Delete from calendar</button>
+          <div class="actions span-2" style="gap:8px">
+            <button class="btn btn-primary" id="cal-save" type="button">Save schedule</button>
+            <button class="btn" id="cal-add-loc" type="button">+ Add new location…</button>
           </div>
         </div>
       </div>`;
   }
 
+  // render month grid
   await refreshCalendarOnly();
 
-  const back = document.getElementById('cal-back');
-  if(back){ back.onclick = ()=>{ location.hash = 'viewing'; }; }
+  // Back / month nav
+  document.getElementById('cal-back')?.addEventListener('click', ()=>{ location.hash = 'viewing'; });
+  document.getElementById('cal-prev')?.addEventListener('click', ()=>{ calOffset -= 1; refreshCalendarOnly(); });
+  document.getElementById('cal-next')?.addEventListener('click', ()=>{ calOffset += 1; refreshCalendarOnly(); });
 
-  const prev = document.getElementById('cal-prev');
-  const next = document.getElementById('cal-next');
-  if(prev) prev.onclick = ()=>{ calOffset -= 1; refreshCalendarOnly(); };
-  if(next) next.onclick = ()=>{ calOffset += 1; refreshCalendarOnly(); };
-
-  // Populate locations dropdown
-  const locSel = document.getElementById('cal-loc-select');
-  if (locSel && !locSel.dataset.bound) {
-    locSel.dataset.bound = '1';
-  }
-  const locSnap = await db.collection('locations').get();
-  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) })).sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-  if (locSel) {
-    let opts = `<option value="">— Select saved location —</option>`;
-    locs.forEach(l=>{ opts += `<option value="${l.id}">${l.name || '(no name)'}</option>`; });
-    opts += `<option value="__add">+ Add new…</option>`;
-    locSel.innerHTML = opts;
-  }
-
+  // Scheduling editor
   const filmId = sessionStorage.getItem('scheduleTarget');
   const dateInp = document.getElementById('cal-date');
   const timeInp = document.getElementById('cal-time');
-  const locInp  = document.getElementById('cal-loc');
+  const selLoc  = document.getElementById('cal-loc-sel');
+  const freeLoc = document.getElementById('cal-loc-free');
   const saveBtn = document.getElementById('cal-save');
-  const delBtn  = document.getElementById('cal-delete');
+  const addLocBtn = document.getElementById('cal-add-loc');
 
   if(!filmId){
     if(saveBtn) saveBtn.disabled = true;
-    if(delBtn)  delBtn.disabled  = true;
-    if(locSel)  locSel.disabled  = true;
-    if(locInp)  locInp.disabled  = true;
     return;
   }
 
-  // Load current film schedule
+  // Populate location dropdown
+  const locSnap = await db.collection('locations').orderBy('name').get();
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
+  selLoc.innerHTML = '<option value="">— Select a saved location —</option>';
+  locs.forEach(l=>{
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    opt.textContent = l.name || '';
+    selLoc.appendChild(opt);
+  });
+  const optAdd = document.createElement('option');
+  optAdd.value = '__add';
+  optAdd.textContent = '+ Add new location…';
+  selLoc.appendChild(optAdd);
+
+  // Prefill from film
   const snap = await db.collection('films').doc(filmId).get();
   if(snap.exists){
     const f = snap.data();
@@ -936,71 +1028,49 @@ async function loadCalendar(){
       dateInp.value = f.viewingDate.toDate().toISOString().slice(0,10);
     }
     if(f.viewingTime){ timeInp.value = f.viewingTime; }
-    if(locInp) locInp.value = f.viewingLocationName || '';
-    if(locSel && f.viewingLocationId){
-      const opt = [...locSel.options].find(o => o.value === f.viewingLocationId);
-      if(opt) opt.selected = true;
+    if(f.viewingLocationId){
+      selLoc.value = f.viewingLocationId;
+    }else{
+      selLoc.value = '';
+      freeLoc.value = f.viewingLocationName || '';
     }
   }
 
-  // Handle location select changes (including Add new)
-  if (locSel){
-    locSel.onchange = async ()=>{
-      const val = locSel.value;
-      if(val === '__add'){
-        const newLoc = await showAddLocationModal();
-        if(newLoc){
-          // Refresh select
-          const ns = await db.collection('locations').get();
-          const nl = ns.docs.map(d=>({ id:d.id, ...(d.data()) })).sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-          let opts = `<option value="">— Select saved location —</option>`;
-          nl.forEach(l=>{ opts += `<option value="${l.id}">${l.name || '(no name)'}</option>`; });
-          opts += `<option value="__add">+ Add new…</option>`;
-          locSel.innerHTML = opts;
-          locSel.value = newLoc.id;
-          if(locInp) locInp.value = newLoc.name || '';
-        }else{
-          locSel.value = '';
-        }
+  selLoc.onchange = async ()=>{
+    if(selLoc.value === '__add'){
+      const newLoc = await showAddLocationModal();
+      if(newLoc){
+        // add to dropdown and select it
+        const o = document.createElement('option');
+        o.value = newLoc.id; o.textContent = newLoc.name || '';
+        selLoc.insertBefore(o, selLoc.querySelector('option[value="__add"]'));
+        selLoc.value = newLoc.id;
+        freeLoc.value = '';
       }else{
-        // Fill text field with selected name for visibility (can be overridden)
-        const picked = locs.find(x=>x.id===val);
-        if(locInp) locInp.value = picked ? (picked.name || '') : '';
+        selLoc.value = '';
       }
-    };
-  }
+    }else if(selLoc.value){
+      freeLoc.value = '';
+    }
+  };
+  addLocBtn.onclick = ()=> selLoc.dispatchEvent(new Event('change'));
 
   if(saveBtn){
     saveBtn.onclick = async ()=>{
       const dateVal = dateInp.value;
       const timeVal = timeInp.value || '';
+      const locId   = selLoc.value || '';
+      const locName = locId
+        ? (locs.find(l=>l.id===locId)?.name || '')
+        : (freeLoc.value || '');
+
       if(!dateVal){ alert('Pick a date'); return; }
-
-      const idVal   = (locSel && locSel.value && locSel.value !== '__add') ? locSel.value : '';
-      const nameVal = (locInp && locInp.value.trim()) ? locInp.value.trim()
-                    : (idVal ? ((locs.find(l=>l.id===idVal)||{}).name || '') : '');
-
       const ts = firebase.firestore.Timestamp.fromDate(new Date(dateVal+'T00:00:00'));
       await db.collection('films').doc(filmId).update({
         viewingDate: ts,
         viewingTime: timeVal,
-        viewingLocationId: idVal,
-        viewingLocationName: nameVal
-      });
-      await refreshCalendarOnly();
-      sessionStorage.removeItem('scheduleTarget');
-      location.hash = 'viewing';
-    };
-  }
-
-  if(delBtn){
-    delBtn.onclick = async ()=>{
-      if(!confirm('Remove this film from the calendar?')) return;
-      await db.collection('films').doc(filmId).update({
-        viewingDate: null,
-        viewingTime: '',
-        viewingLocationName: '',
-        viewingLocationId: ''
+        viewingLocationId: locId === '__add' ? '' : locId,
+        viewingLocationName: locName
       });
       await refreshCalendarOnly();
       sessionStorage.removeItem('scheduleTarget');
@@ -1009,75 +1079,7 @@ async function loadCalendar(){
   }
 }
 
-/* =================== Quick view modal (calendar pill) =================== */
-async function openFilmQuickView(filmId){
-  const root = document.getElementById('modal-root');
-  if(!root) return;
-
-  const snap = await db.collection('films').doc(filmId).get();
-  if(!snap.exists) return;
-  const f = snap.data();
-
-  const dateStr = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
-    ? f.viewingDate.toDate().toISOString().slice(0,10) : '—';
-
-  root.innerHTML = `
-    <div class="modal-overlay">
-      <div class="modal">
-        <div class="modal-head">
-          <h2>${f.title || 'Film'}</h2>
-          <button class="btn btn-ghost" id="fv-close">Close</button>
-        </div>
-        <div class="kv" style="margin-bottom:10px">
-          <div>Date</div><div>${dateStr}</div>
-          <div>Time</div><div>${f.viewingTime || '—'}</div>
-          <div>Location</div><div>${f.viewingLocationName || ''}</div>
-          <div>Runtime</div><div>${(f.runtimeMinutes ?? '—')} min</div>
-          <div>Language</div><div>${f.language || '—'}</div>
-          <div>UK Rating</div><div>${f.ukAgeRating || '—'}</div>
-          <div>Genre</div><div>${f.genre || '—'}</div>
-          <div>Country</div><div>${f.country || '—'}</div>
-        </div>
-        <div class="actions">
-          <button class="btn btn-primary" id="fv-edit">Edit schedule</button>
-          <button class="btn" id="fv-open">Open full details</button>
-          <button class="btn btn-danger" id="fv-delete">Delete from calendar</button>
-        </div>
-      </div>
-    </div>`;
-
-  const close = ()=>{ root.innerHTML=''; };
-  root.querySelector('#fv-close').addEventListener('click', close);
-
-  root.querySelector('#fv-edit').addEventListener('click', async ()=>{
-    sessionStorage.setItem('scheduleTarget', filmId);
-    close();
-    if ((location.hash.replace('#','') || '') === 'calendar') {
-      await loadCalendar();
-    } else {
-      location.hash = 'calendar';
-    }
-  });
-
-  root.querySelector('#fv-open').addEventListener('click', ()=>{
-    close();
-    location.hash = 'viewing';
-  });
-
-  root.querySelector('#fv-delete').addEventListener('click', async ()=>{
-    if(!confirm('Remove this film from the calendar?')) return;
-    await db.collection('films').doc(filmId).update({
-      viewingDate: null,
-      viewingTime: '',
-      viewingLocationName: '',
-      viewingLocationId: ''
-    });
-    await refreshCalendarOnly();
-    close();
-  });
-}
-
-/* =================== VOTING =================== */
+/* =================== VOTING (4 YES to proceed; show who voted) =================== */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -1157,6 +1159,7 @@ async function checkAutoOutcome(filmId){
     if(val===1) yes+=1;
     if(val===-1) no+=1;
   });
+  // 4 YES -> move to UK Distributor; 4 NO -> Discard
   if(yes>=4){
     await ref.update({ status:'uk_check' });
   } else if(no>=4){
@@ -1164,7 +1167,7 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-/* =================== UK CHECK =================== */
+/* =================== UK CHECK (after Voting) =================== */
 async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
@@ -1270,102 +1273,76 @@ async function loadArchive(){
   });
 }
 
-/* =================== Admin Addresses page =================== */
+/* =================== ADDRESSES (Admin only) =================== */
 async function loadAddressesAdmin(){
-  const viewEl = els.views.addresses;
-  if (!viewEl) return;
-
-  // Ensure a list container exists; create if missing
-  let list = viewEl.querySelector('#addresses-list');
-  if (!list) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="item">
-        <div class="item-left">
-          <div class="item-title">Saved Addresses</div>
-        </div>
-        <div class="item-right">
-          <button class="btn" id="addr-add">Add new</button>
-        </div>
-      </div>
-      <div id="addresses-list" class="list"></div>
-    `;
-    viewEl.appendChild(card);
-    list = card.querySelector('#addresses-list');
-
-    // Add-new handler
-    card.querySelector('#addr-add').addEventListener('click', async ()=>{
-      const res = await showAddLocationModal();
-      if(res) loadAddressesAdmin();
-    });
-  }
-
-  list.innerHTML = '';
-
-  // Show a small role hint but don't block rendering
-  if (state.role !== 'admin') {
-    list.insertAdjacentHTML('beforebegin',
-      '<div class="notice">Note: your user role is not set to “admin”. You can still view/edit; Firestore rules will enforce permissions.</div>');
-  }
-
-  const snap = await db.collection('locations').get();
-  if (snap.empty) {
-    list.innerHTML = '<div class="notice">No saved addresses yet.</div>';
+  if(!els.views.addresses){ return; }
+  if(state.role !== 'admin'){
+    els.views.addresses.innerHTML = '<div class="card"><div class="notice">Admin only.</div></div>';
     return;
   }
+  const list = els.addressesList || els.views.addresses;
+  list.innerHTML = '';
 
-  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                        .sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-
-  rows.forEach(l=>{
-    const name = l.name || '(no name)';
-    const line = [l.address, l.city, l.postcode].filter(Boolean).join(', ');
-    const html = `
-      <div class="card">
-        <div class="item">
-          <div class="item-left">
-            <div>
-              <div class="item-title">${name}</div>
-              <div class="kv">
-                <div>Address</div><div>${line || '—'}</div>
-              </div>
+  try{
+    const snap = await db.collection('locations').orderBy('name').get();
+    const locs = snap.docs.map(d=>({ id:d.id, ...(d.data()) }));
+    if(!locs.length){
+      list.innerHTML = '<div class="card"><div class="notice">No addresses saved yet.</div></div>';
+      return;
+    }
+    locs.forEach(l=>{
+      const html = `
+        <div class="card" data-loc="${l.id}">
+          <div class="form-grid">
+            <label>Name<input type="text" data-loc-edit="name" value="${escapeHtml(l.name||'')}"></label>
+            <label>Postcode<input type="text" data-loc-edit="postcode" value="${escapeHtml(l.postcode||'')}"></label>
+            <label class="span-2">Address<input type="text" data-loc-edit="address" value="${escapeHtml(l.address||'')}"></label>
+            <label>City<input type="text" data-loc-edit="city" value="${escapeHtml(l.city||'')}"></label>
+            <div class="actions span-2">
+              <button class="btn btn-primary" data-loc-act="save">Save</button>
+              <button class="btn btn-danger" data-loc-act="delete">Delete</button>
+              <span class="badge" data-loc-msg style="display:none"></span>
             </div>
           </div>
-          <div class="item-right">
-            <button class="btn" data-edit="${l.id}">Edit</button>
-            <button class="btn btn-danger" data-del="${l.id}">Delete</button>
-          </div>
-        </div>
-      </div>`;
-    list.insertAdjacentHTML('beforeend', html);
-  });
-
-  // Delete
-  list.querySelectorAll('button[data-del]').forEach(b=>{
-    b.addEventListener('click', async ()=>{
-      const id = b.dataset.del;
-      if (!confirm('Delete this address?')) return;
-      await db.collection('locations').doc(id).delete();
-      loadAddressesAdmin();
+        </div>`;
+      list.insertAdjacentHTML('beforeend', html);
     });
-  });
 
-  // Edit
-  list.querySelectorAll('button[data-edit]').forEach(b=>{
-    b.addEventListener('click', async ()=>{
-      const id = b.dataset.edit;
-      const ref = db.collection('locations').doc(id);
-      const s = await ref.get(); if(!s.exists) return;
-      const cur = s.data();
-      const name = prompt('Location name', cur.name || '') ?? cur.name;
-      const address = prompt('Address line', cur.address || '') ?? cur.address;
-      const city = prompt('City', cur.city || '') ?? cur.city;
-      const postcode = prompt('Postcode', cur.postcode || '') ?? cur.postcode;
-      await ref.update({ name, address, city, postcode });
-      loadAddressesAdmin();
+    // Save/Delete handlers
+    list.addEventListener('click', async (e)=>{
+      const card = e.target.closest('[data-loc]');
+      if(!card) return;
+      const id = card.getAttribute('data-loc');
+      if(e.target.matches('[data-loc-act="save"]')){
+        const vals = {};
+        card.querySelectorAll('[data-loc-edit]').forEach(inp=>{
+          vals[inp.getAttribute('data-loc-edit')] = inp.value.trim();
+        });
+        try{
+          await db.collection('locations').doc(id).update(vals);
+          flashMsg(card, 'Saved.');
+        }catch(err){ alert(err.message); }
+      }
+      if(e.target.matches('[data-loc-act="delete"]')){
+        if(!confirm('Delete this address?')) return;
+        try{
+          await db.collection('locations').doc(id).delete();
+          card.remove();
+        }catch(err){ alert(err.message); }
+      }
     });
-  });
+
+  }catch(e){
+    list.innerHTML = `<div class="card"><div class="notice">Error loading addresses: ${escapeHtml(e.message||'')}</div></div>`;
+  }
+}
+
+function flashMsg(card, text){
+  const b = card.querySelector('[data-loc-msg]');
+  if(!b) return;
+  b.textContent = text;
+  b.style.display = 'inline-block';
+  setTimeout(()=>{ b.style.display = 'none'; }, 1500);
 }
 
 /* =================== Admin actions =================== */
@@ -1423,11 +1400,6 @@ async function adminAction(action, filmId){
 
 /* =================== Boot =================== */
 async function boot(){
-  // Wrap calendar pill text nicely
-  const style = document.createElement('style');
-  style.textContent = `.cal-pill{display:block;white-space:normal;word-break:break-word;line-height:1.25;margin:3px 0}`;
-  document.head.appendChild(style);
-
   const ok = await waitForFirebaseAndConfig(10000);
   if(!ok){
     alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
