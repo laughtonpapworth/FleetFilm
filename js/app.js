@@ -14,7 +14,7 @@ const els = {
   signOut: document.getElementById('btn-signout'),
 
   // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
+  pendingList: document.getElementById('intake-list'),
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -37,7 +37,7 @@ const els = {
     discarded:  document.getElementById('view-discarded'),
     archive:    document.getElementById('view-archive'),
     calendar:   document.getElementById('view-calendar'),
-    addresses:  document.getElementById('view-addresses'),   // admin addresses
+    addresses:  document.getElementById('view-addresses'),
   },
 
   // NAV BUTTONS
@@ -53,7 +53,7 @@ const els = {
     discarded:  document.getElementById('nav-discarded'),
     archive:    document.getElementById('nav-archive'),
     calendar:   document.getElementById('nav-calendar'),
-    addresses:  document.getElementById('nav-addresses'),    // admin addresses
+    addresses:  document.getElementById('nav-addresses'),
   },
 
   // SUBMIT
@@ -82,9 +82,9 @@ const REQUIRED_BASIC_FIELDS = [
 ];
 
 /* =================== Calendar (Monday-first) =================== */
-let calOffset = 0; // months from "now" (0=current, -1=prev, +1=next)
+let calOffset = 0;
 
-function mondayIndex(jsDay){ return (jsDay + 6) % 7; } // JS: Sun=0..Sat=6 -> Mon=0..Sun=6
+function mondayIndex(jsDay){ return (jsDay + 6) % 7; }
 function monthLabel(year, month){
   return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
@@ -207,7 +207,7 @@ function setView(name){
 }
 function routerFromHash(){
   const h = (location.hash.replace('#','') || 'submit');
-  const map = { intake:'pending', approved:'green' }; // legacy -> new
+  const map = { intake:'pending', approved:'green' };
   setView(map[h] || h);
 }
 function showSignedIn(on){
@@ -750,7 +750,6 @@ async function loadViewing(){
 
       if(act === 'set-datetime'){
         sessionStorage.setItem('scheduleTarget', id);
-        // If we're already on calendar, trigger a direct reload; otherwise navigate.
         if ((location.hash.replace('#','') || '') === 'calendar') {
           await loadCalendar();
         } else {
@@ -874,7 +873,14 @@ async function loadCalendar(){
         <div class="form-grid">
           <label>Date<input id="cal-date" type="date"></label>
           <label>Time (optional)<input id="cal-time" type="time"></label>
-          <label class="span-2">Location<input id="cal-loc" type="text"></label>
+
+          <label>Location (saved)
+            <select id="cal-loc-select"></select>
+          </label>
+          <label>Or custom name
+            <input id="cal-loc" type="text" placeholder="Leave blank to use saved name">
+          </label>
+
           <div class="actions span-2">
             <button class="btn btn-primary" id="cal-save">Save schedule</button>
             <button class="btn btn-danger" id="cal-delete">Delete from calendar</button>
@@ -893,6 +899,20 @@ async function loadCalendar(){
   if(prev) prev.onclick = ()=>{ calOffset -= 1; refreshCalendarOnly(); };
   if(next) next.onclick = ()=>{ calOffset += 1; refreshCalendarOnly(); };
 
+  // Populate locations dropdown
+  const locSel = document.getElementById('cal-loc-select');
+  if (locSel && !locSel.dataset.bound) {
+    locSel.dataset.bound = '1';
+  }
+  const locSnap = await db.collection('locations').get();
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) })).sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  if (locSel) {
+    let opts = `<option value="">— Select saved location —</option>`;
+    locs.forEach(l=>{ opts += `<option value="${l.id}">${l.name || '(no name)'}</option>`; });
+    opts += `<option value="__add">+ Add new…</option>`;
+    locSel.innerHTML = opts;
+  }
+
   const filmId = sessionStorage.getItem('scheduleTarget');
   const dateInp = document.getElementById('cal-date');
   const timeInp = document.getElementById('cal-time');
@@ -903,9 +923,12 @@ async function loadCalendar(){
   if(!filmId){
     if(saveBtn) saveBtn.disabled = true;
     if(delBtn)  delBtn.disabled  = true;
+    if(locSel)  locSel.disabled  = true;
+    if(locInp)  locInp.disabled  = true;
     return;
   }
 
+  // Load current film schedule
   const snap = await db.collection('films').doc(filmId).get();
   if(snap.exists){
     const f = snap.data();
@@ -914,19 +937,55 @@ async function loadCalendar(){
     }
     if(f.viewingTime){ timeInp.value = f.viewingTime; }
     if(locInp) locInp.value = f.viewingLocationName || '';
+    if(locSel && f.viewingLocationId){
+      const opt = [...locSel.options].find(o => o.value === f.viewingLocationId);
+      if(opt) opt.selected = true;
+    }
+  }
+
+  // Handle location select changes (including Add new)
+  if (locSel){
+    locSel.onchange = async ()=>{
+      const val = locSel.value;
+      if(val === '__add'){
+        const newLoc = await showAddLocationModal();
+        if(newLoc){
+          // Refresh select
+          const ns = await db.collection('locations').get();
+          const nl = ns.docs.map(d=>({ id:d.id, ...(d.data()) })).sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+          let opts = `<option value="">— Select saved location —</option>`;
+          nl.forEach(l=>{ opts += `<option value="${l.id}">${l.name || '(no name)'}</option>`; });
+          opts += `<option value="__add">+ Add new…</option>`;
+          locSel.innerHTML = opts;
+          locSel.value = newLoc.id;
+          if(locInp) locInp.value = newLoc.name || '';
+        }else{
+          locSel.value = '';
+        }
+      }else{
+        // Fill text field with selected name for visibility (can be overridden)
+        const picked = locs.find(x=>x.id===val);
+        if(locInp) locInp.value = picked ? (picked.name || '') : '';
+      }
+    };
   }
 
   if(saveBtn){
     saveBtn.onclick = async ()=>{
       const dateVal = dateInp.value;
       const timeVal = timeInp.value || '';
-      const locVal  = (locInp.value || '').trim();
       if(!dateVal){ alert('Pick a date'); return; }
+
+      const idVal   = (locSel && locSel.value && locSel.value !== '__add') ? locSel.value : '';
+      const nameVal = (locInp && locInp.value.trim()) ? locInp.value.trim()
+                    : (idVal ? ((locs.find(l=>l.id===idVal)||{}).name || '') : '');
+
       const ts = firebase.firestore.Timestamp.fromDate(new Date(dateVal+'T00:00:00'));
       await db.collection('films').doc(filmId).update({
         viewingDate: ts,
         viewingTime: timeVal,
-        viewingLocationName: locVal
+        viewingLocationId: idVal,
+        viewingLocationName: nameVal
       });
       await refreshCalendarOnly();
       sessionStorage.removeItem('scheduleTarget');
@@ -990,7 +1049,6 @@ async function openFilmQuickView(filmId){
   const close = ()=>{ root.innerHTML=''; };
   root.querySelector('#fv-close').addEventListener('click', close);
 
-  // Works even if you're already on #calendar
   root.querySelector('#fv-edit').addEventListener('click', async ()=>{
     sessionStorage.setItem('scheduleTarget', filmId);
     close();
@@ -1212,24 +1270,45 @@ async function loadArchive(){
   });
 }
 
-/* =================== Admin-only Addresses page =================== */
+/* =================== Admin Addresses page =================== */
 async function loadAddressesAdmin(){
-  // Find a sensible container even if the exact id differs
-  const list =
-    document.getElementById('addresses-list') ||
-    document.querySelector('#view-addresses #addresses-list') ||
-    document.querySelector('#view-addresses .list') ||
-    document.getElementById('address-list');
+  const viewEl = els.views.addresses;
+  if (!viewEl) return;
 
-  if (!list) return;
-  list.innerHTML = '';
+  // Ensure a list container exists; create if missing
+  let list = viewEl.querySelector('#addresses-list');
+  if (!list) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="item">
+        <div class="item-left">
+          <div class="item-title">Saved Addresses</div>
+        </div>
+        <div class="item-right">
+          <button class="btn" id="addr-add">Add new</button>
+        </div>
+      </div>
+      <div id="addresses-list" class="list"></div>
+    `;
+    viewEl.appendChild(card);
+    list = card.querySelector('#addresses-list');
 
-  if (state.role !== 'admin') {
-    list.innerHTML = '<div class="notice">Admins only.</div>';
-    return;
+    // Add-new handler
+    card.querySelector('#addr-add').addEventListener('click', async ()=>{
+      const res = await showAddLocationModal();
+      if(res) loadAddressesAdmin();
+    });
   }
 
-  // Fetch then sort client-side to avoid index/field issues
+  list.innerHTML = '';
+
+  // Show a small role hint but don't block rendering
+  if (state.role !== 'admin') {
+    list.insertAdjacentHTML('beforebegin',
+      '<div class="notice">Note: your user role is not set to “admin”. You can still view/edit; Firestore rules will enforce permissions.</div>');
+  }
+
   const snap = await db.collection('locations').get();
   if (snap.empty) {
     list.innerHTML = '<div class="notice">No saved addresses yet.</div>';
@@ -1344,11 +1423,9 @@ async function adminAction(action, filmId){
 
 /* =================== Boot =================== */
 async function boot(){
-  // Inject tiny calendar pill wrapping style so text wraps nicely.
+  // Wrap calendar pill text nicely
   const style = document.createElement('style');
-  style.textContent = `
-    .cal-pill{display:block;white-space:normal;word-break:break-word;line-height:1.25;margin:3px 0}
-  `;
+  style.textContent = `.cal-pill{display:block;white-space:normal;word-break:break-word;line-height:1.25;margin:3px 0}`;
   document.head.appendChild(style);
 
   const ok = await waitForFirebaseAndConfig(10000);
