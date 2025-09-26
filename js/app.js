@@ -37,6 +37,7 @@ const els = {
     discarded:  document.getElementById('view-discarded'),
     archive:    document.getElementById('view-archive'),
     calendar:   document.getElementById('view-calendar'),
+    addresses:  document.getElementById('view-addresses'),   // NEW: admin addresses
   },
 
   // NAV BUTTONS
@@ -52,6 +53,7 @@ const els = {
     discarded:  document.getElementById('nav-discarded'),
     archive:    document.getElementById('nav-archive'),
     calendar:   document.getElementById('nav-calendar'),
+    addresses:  document.getElementById('nav-addresses'),    // NEW: admin addresses
   },
 
   // SUBMIT
@@ -87,7 +89,9 @@ function monthLabel(year, month){
   return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
-/** Build the calendar grid HTML (headers + padded days) using Monday as first day. */
+/** Build the calendar grid HTML (headers + padded days) using Monday as first day.
+ *  Expects eventsByISO to be { 'YYYY-MM-DD': [{id, label}, ...], ... }
+ */
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 where 0=Mon
@@ -100,7 +104,9 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(t => `<div class="cal-pill">${t}</div>`).join('');
+    const pills = items.map(it =>
+      `<button class="cal-pill" data-film-id="${it.id}" title="${it.label}">${it.label}</button>`
+    ).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
   return headers + cells;
@@ -122,17 +128,28 @@ async function refreshCalendarOnly(){
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    // label: Title + time + locationName (name only; blank if none)
     const label =
       ev.title +
       (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
       (ev.viewingLocationName ? (' • ' + ev.viewingLocationName) : '');
-    (byISO[iso] ||= []).push(label);
+    (byISO[iso] ||= []).push({ id: ev.id, label });
   });
 
   const now = new Date();
   const ref = new Date(now.getFullYear(), now.getMonth()+calOffset, 1);
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
+
+  // Attach delegated click handler once to open quick view / edit
+  if (!gridEl.dataset.bound) {
+    gridEl.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.cal-pill[data-film-id]');
+      if (!btn) return;
+      openFilmQuickView(btn.getAttribute('data-film-id'));
+    });
+    gridEl.dataset.bound = '1';
+  }
 }
 
 
@@ -203,6 +220,7 @@ function setView(name){
   if(name==='discarded')  return loadDiscarded();
   if(name==='archive')    return loadArchive();
   if(name==='calendar')   return loadCalendar();
+  if(name==='addresses')  return loadAddressesAdmin(); // NEW
 }
 
 function routerFromHash(){
@@ -942,6 +960,55 @@ async function loadCalendar(){
   }
 }
 
+/* =================== Quick view modal for calendar pills =================== */
+async function openFilmQuickView(filmId){
+  const root = document.getElementById('modal-root');
+  if(!root) return;
+
+  const snap = await db.collection('films').doc(filmId).get();
+  if(!snap.exists) return;
+  const f = snap.data();
+
+  const dateStr = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
+    ? f.viewingDate.toDate().toISOString().slice(0,10) : '—';
+
+  root.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal">
+        <div class="modal-head">
+          <h2>${f.title || 'Film'}</h2>
+          <button class="btn btn-ghost" id="fv-close">Close</button>
+        </div>
+        <div class="kv" style="margin-bottom:10px">
+          <div>Date</div><div>${dateStr}</div>
+          <div>Time</div><div>${f.viewingTime || '—'}</div>
+          <div>Location</div><div>${f.viewingLocationName || ''}</div>
+          <div>Runtime</div><div>${(f.runtimeMinutes ?? '—')} min</div>
+          <div>Language</div><div>${f.language || '—'}</div>
+          <div>UK Rating</div><div>${f.ukAgeRating || '—'}</div>
+          <div>Genre</div><div>${f.genre || '—'}</div>
+          <div>Country</div><div>${f.country || '—'}</div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="fv-edit">Edit schedule</button>
+          <button class="btn" id="fv-open">Open full details</button>
+        </div>
+      </div>
+    </div>`;
+
+  const close = ()=>{ root.innerHTML=''; };
+  root.querySelector('#fv-close').addEventListener('click', close);
+  root.querySelector('#fv-edit').addEventListener('click', ()=>{
+    sessionStorage.setItem('scheduleTarget', filmId);
+    close();
+    location.hash = 'calendar';
+  });
+  root.querySelector('#fv-open').addEventListener('click', ()=>{
+    close();
+    location.hash = 'viewing';
+  });
+}
+
 /* =================== VOTING (4 YES to proceed; show who voted) =================== */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
@@ -1133,6 +1200,74 @@ async function loadArchive(){
     const origin = f.archivedFrom || '';
     const right = origin ? `<span class="badge">${origin}</span>` : '';
     els.archiveList.insertAdjacentHTML('beforeend', pendingCard(f, right));
+  });
+}
+
+/* =================== Admin-only Addresses page =================== */
+async function loadAddressesAdmin(){
+  const list = document.getElementById('addresses-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (state.role !== 'admin') {
+    list.innerHTML = '<div class="notice">Admins only.</div>';
+    return;
+  }
+
+  const snap = await db.collection('locations').orderBy('name').get();
+  if (snap.empty) {
+    list.innerHTML = '<div class="notice">No saved addresses yet.</div>';
+    return;
+  }
+
+  snap.forEach(doc=>{
+    const l = { id: doc.id, ...doc.data() };
+    const name = l.name || '(no name)';
+    const line = [l.address, l.city, l.postcode].filter(Boolean).join(', ');
+    const html = `
+      <div class="card">
+        <div class="item">
+          <div class="item-left">
+            <div>
+              <div class="item-title">${name}</div>
+              <div class="kv">
+                <div>Address</div><div>${line || '—'}</div>
+              </div>
+            </div>
+          </div>
+          <div class="item-right">
+            <button class="btn" data-edit="${l.id}">Edit</button>
+            <button class="btn btn-danger" data-del="${l.id}">Delete</button>
+          </div>
+        </div>
+      </div>`;
+    list.insertAdjacentHTML('beforeend', html);
+  });
+
+  // Delete
+  list.querySelectorAll('button[data-del]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const id = b.dataset.del;
+      if (!confirm('Delete this address?')) return;
+      await db.collection('locations').doc(id).delete();
+      loadAddressesAdmin();
+    });
+  });
+
+  // Edit (prompt-based minimal editor)
+  list.querySelectorAll('button[data-edit]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const id = b.dataset.edit;
+      const ref = db.collection('locations').doc(id);
+      const s = await ref.get(); if(!s.exists) return;
+      const cur = s.data();
+      const name = prompt('Location name', cur.name || '') ?? cur.name;
+      const address = prompt('Address line', cur.address || '') ?? cur.address;
+      const city = prompt('City', cur.city || '') ?? cur.city;
+      const postcode = prompt('Postcode', cur.postcode || '') ?? cur.postcode;
+      await ref.update({ name, address, city, postcode });
+      loadAddressesAdmin();
+    });
   });
 }
 
