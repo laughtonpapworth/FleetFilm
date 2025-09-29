@@ -38,7 +38,7 @@ const els = {
     discarded:  document.getElementById('view-discarded'),
     archive:    document.getElementById('view-archive'),
     calendar:   document.getElementById('view-calendar'),
-    addresses:  document.getElementById('view-addresses'), // admin-only
+    addresses:  document.getElementById('view-addresses'),   // NEW: admin-only
   },
 
   // NAV BUTTONS
@@ -54,7 +54,7 @@ const els = {
     discarded:  document.getElementById('nav-discarded'),
     archive:    document.getElementById('nav-archive'),
     calendar:   document.getElementById('nav-calendar'),
-    addresses:  document.getElementById('nav-addresses'), // admin-only
+    addresses:  document.getElementById('nav-addresses'),    // NEW: admin-only
   },
 
   // SUBMIT
@@ -103,7 +103,10 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(t => t.html).join('');
+    const pills = items.map(({text, id}) => 
+      // inline style ensures proper wrapping even if CSS didn’t load or regressed
+      `<button class="cal-pill" data-film-id="${id}" style="white-space:normal;display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
+    ).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
   return headers + cells;
@@ -125,15 +128,10 @@ async function refreshCalendarOnly(){
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const label =
-      ev.title +
-      (ev.viewingTime ? (' ' + ev.viewingTime) : '') +
-      (ev.viewingLocationName ? (' • ' + ev.viewingLocationName) : '');
-    const pill = `
-      <button class="cal-pill" data-film="${ev.id}" title="Open ${ev.title}">
-        ${escapeHtml(label)}
-      </button>`;
-    (byISO[iso] ||= []).push({ html: pill });
+    const locName = ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : ''; // name only, blank if none
+    const time = ev.viewingTime ? ` ${ev.viewingTime}` : '';
+    const label = `${ev.title}${time}${locName}`;
+    (byISO[iso] ||= []).push({ text: label, id: ev.id });
   });
 
   const now = new Date();
@@ -141,75 +139,69 @@ async function refreshCalendarOnly(){
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 
-  // Make pills clickable (open small modal)
-  gridEl.addEventListener('click', e=>{
-    const btn = e.target.closest('[data-film]');
-    if(!btn) return;
-    openCalendarItemModal(btn.getAttribute('data-film'));
-  }, { once:true }); // re-attached on every refresh
+  // Wire pill clicks -> quick actions modal
+  gridEl.querySelectorAll('.cal-pill').forEach(p=>{
+    p.addEventListener('click', async ()=>{
+      const filmId = p.getAttribute('data-film-id');
+      const doc = await db.collection('films').doc(filmId).get();
+      if(!doc.exists) return;
+      const f = { id: doc.id, ...doc.data() };
+      openCalendarQuickActions(f);
+    });
+  });
 }
 
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-}
-
-/* Small modal for a calendar item */
-function openCalendarItemModal(filmId){
+/* Small modal for calendar quick actions */
+function openCalendarQuickActions(film){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal" role="dialog" aria-label="Calendar item">
+    <div class="modal" role="dialog" aria-label="Calendar item actions">
       <div class="modal-head">
         <h2>Edit schedule</h2>
-        <button class="btn btn-ghost" type="button" id="calit-close">Close</button>
+        <button class="btn btn-ghost" id="calqa-close">Close</button>
       </div>
-      <div class="actions" style="gap:8px">
-        <button id="calit-edit" class="btn btn-primary" type="button">Edit schedule</button>
-        <button id="calit-open" class="btn" type="button">Open full details</button>
-        <button id="calit-del" class="btn btn-danger" type="button">Delete schedule</button>
+      <div class="form-grid">
+        <div class="span-2" style="font-weight:800">${film.title}</div>
+        <button class="btn btn-primary" id="calqa-edit">Open editor below</button>
+        <button class="btn" id="calqa-details">Open full details</button>
+        <button class="btn btn-danger" id="calqa-delete">Remove from calendar</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
 
   function close(){ document.body.removeChild(overlay); }
 
-  overlay.querySelector('#calit-close').onclick = close;
+  overlay.querySelector('#calqa-close').onclick = close;
 
-  overlay.querySelector('#calit-edit').onclick = async ()=>{
+  overlay.querySelector('#calqa-edit').onclick = async ()=>{
     close();
-    // open calendar view’s editor prefilled
-    sessionStorage.setItem('scheduleTarget', filmId);
-    await loadCalendar(); // ensures editor exists and is filled
-    document.getElementById('calendar-card')?.scrollIntoView({ behavior:'smooth', block:'start' });
-    document.getElementById('cal-date')?.focus();
+    // prefill the calendar editor with this film’s values and focus it
+    await prefillCalendarEditor(film.id);
+    document.getElementById('calendar-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  overlay.querySelector('#calit-open').onclick = ()=>{
+  overlay.querySelector('#calqa-details').onclick = ()=>{
     close();
+    // jump to Viewing list and try to focus this film card
     location.hash = 'viewing';
-    // optionally highlight later (after view loads)
-    setTimeout(()=>highlightFilmCard(filmId), 300);
+    setTimeout(async ()=>{
+      const card = document.querySelector(`[data-film-card="${film.id}"]`);
+      if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+    }, 250);
   };
 
-  overlay.querySelector('#calit-del').onclick = async ()=>{
-    try{
-      await db.collection('films').doc(filmId).update({
-        viewingDate: null,
-        viewingTime: '',
-        viewingLocationId: '',
-        viewingLocationName: ''
-      });
-      close();
-      await refreshCalendarOnly();
-    }catch(e){ alert(e.message); }
+  overlay.querySelector('#calqa-delete').onclick = async ()=>{
+    if(!confirm('Remove this film from the calendar?')) return;
+    await db.collection('films').doc(film.id).update({
+      viewingDate: null,
+      viewingTime: '',
+      viewingLocationId: '',
+      viewingLocationName: ''
+    });
+    close();
+    await refreshCalendarOnly();
   };
-}
-
-function highlightFilmCard(id){
-  const card = document.querySelector(`[data-film-card="${id}"]`);
-  if(!card) return;
-  card.style.boxShadow = '0 0 0 3px #c98a00';
-  setTimeout(()=>card.style.boxShadow='', 1800);
 }
 
 /* =================== Firebase =================== */
@@ -279,7 +271,7 @@ function setView(name){
   if(name==='discarded')  return loadDiscarded();
   if(name==='archive')    return loadArchive();
   if(name==='calendar')   return loadCalendar();
-  if(name==='addresses')  return loadAddressesAdmin();
+  if(name==='addresses')  return loadAddressesAdmin(); // NEW
 }
 
 function routerFromHash(){
@@ -292,6 +284,7 @@ function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
   els.nav.classList.toggle('hidden', !on);
+  // bottom mobile tabbar (if exists) is purely CSS-visible
 }
 
 // Create a user doc if missing
@@ -310,7 +303,7 @@ async function ensureUserDoc(u){
   const role = (roleSnap.exists && roleSnap.data() && roleSnap.data().role) || 'member';
   state.role = role;
 
-  // Show/hide the admin-only Addresses nav button
+  // Admin-only nav button visibility
   if(els.navButtons.addresses){
     els.navButtons.addresses.classList.toggle('hidden', role!=='admin');
   }
@@ -321,8 +314,8 @@ function attachHandlers(){
     if(!btn) return;
     btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
   });
-  els.signOut?.addEventListener('click', () => auth.signOut());
-  els.submitBtn?.addEventListener('click', submitFilm);
+  if(els.signOut) els.signOut.addEventListener('click', () => auth.signOut());
+  if(els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
   // ---- Auth buttons (popup then safe redirect fallback) ----
   if(els.googleBtn){
@@ -422,8 +415,8 @@ function showPicker(items){
       '<div class="modal-head">' +
         '<h2>Select the correct film</h2>' +
         '<div style="display:flex; gap:8px; align-items:center;">' +
-          '<button id="ff-picker-manual" class="btn btn-ghost" type="button">Add manually</button>' +
-          '<button id="ff-picker-cancel" class="btn btn-ghost" type="button">Cancel</button>' +
+          '<button id="ff-picker-manual" class="btn btn-ghost">Add manually</button>' +
+          '<button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>' +
         '</div>' +
       '</div>' +
       '<div id="ff-picker-list" class="modal-list"></div>';
@@ -444,7 +437,7 @@ function showPicker(items){
             '<div class="modal-row-title">'+it.Title+' ('+it.Year+')</div>' +
             '<div class="modal-row-sub">'+(it.Type || 'movie')+' • '+it.imdbID+'</div>' +
           '</div>' +
-          '<button data-id="'+it.imdbID+'" class="btn btn-primary" type="button">Select</button>';
+          '<button data-id="'+it.imdbID+'" class="btn btn-primary">Select</button>';
         list.appendChild(row);
       });
     }
@@ -471,9 +464,11 @@ function showPicker(items){
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
   const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
-  const norm = pc.trim().toUpperCase();
+  const norm = (pc||'').trim().toUpperCase();
+  if(!norm) return [];
 
   if (key) {
+    // getaddress.io
     const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
     const r = await fetch(url);
     if(!r.ok) throw new Error('Address API error');
@@ -492,9 +487,11 @@ async function fetchAddressesByPostcode(pc){
     return out;
   }
 
+  // Fallback: postcodes.io
   const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
+  if(!r.ok) return [];
   const data = await r.json();
-  if(data && data.status === 200){
+  if(data && data.status === 200 && data.result){
     const res = data.result;
     return [{
       label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`,
@@ -581,10 +578,13 @@ async function submitFilm(){
 
   try{
     await db.collection('films').add(base);
-    els.submitMsg.textContent = 'Added to Pending Films.';
-    els.submitMsg.classList.remove('hidden');
-    els.title.value=''; els.year.value='';
-    setTimeout(()=>els.submitMsg.classList.add('hidden'), 1800);
+    if(els.submitMsg){
+      els.submitMsg.textContent = 'Added to Pending Films.';
+      els.submitMsg.classList.remove('hidden');
+      setTimeout(()=>els.submitMsg.classList.add('hidden'), 1800);
+    }
+    if(els.title) els.title.value=''; 
+    if(els.year) els.year.value='';
     setView('pending');
   }catch(e){ alert(e.message); }
 }
@@ -606,7 +606,7 @@ async function fetchByStatus(status){
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  return `<div class="card" data-film-card="${f.id}">
+  return `<div class="card" data-film-card="${f.id || ''}">
     <div class="item">
       <div class="item-left">
         ${poster}
@@ -621,7 +621,7 @@ function pendingCard(f, actionsHtml=''){
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  return `<div class="card detail-card" data-film-card="${f.id}">
+  return `<div class="card detail-card" data-film-card="${f.id || ''}">
     <div class="item item--split">
       <div class="item-left">
         ${poster}
@@ -756,7 +756,7 @@ async function loadViewing(){
     let locOptions = '<option value="">Select location…</option>';
     locs.forEach(l=>{
       const sel = (f.viewingLocationId===l.id) ? ' selected' : '';
-      locOptions += `<option value="${l.id}"${sel}>${escapeHtml(l.name||'')}</option>`;
+      locOptions += `<option value="${l.id}"${sel}>${l.name}</option>`;
     });
     locOptions += '<option value="__add">+ Add new location…</option>';
 
@@ -858,37 +858,37 @@ async function loadViewing(){
 }
 
 /* ---------- Add Location Modal (with postcode lookup + selectable results) ---------- */
-function showAddLocationModal(){
+function showAddLocationModal(prefill={}){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className='modal-overlay';
     overlay.innerHTML = `
       <div class="modal">
         <div class="modal-head">
-          <h2>Add new location</h2>
-          <button class="btn btn-ghost" id="loc-cancel" type="button">Cancel</button>
+          <h2>${prefill.id ? 'Edit location' : 'Add new location'}</h2>
+          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
         </div>
         <div class="form-grid">
           <label class="span-2">Location Name
-            <input id="loc-name" type="text" placeholder="e.g. Church Hall">
+            <input id="loc-name" type="text" placeholder="e.g. Church Hall" value="${prefill.name||''}">
           </label>
           <label>Postcode
-            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX">
+            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3XX" value="${prefill.postcode||''}">
           </label>
           <div class="actions">
-            <button class="btn" id="loc-lookup" type="button">Lookup</button>
+            <button class="btn" id="loc-lookup">Lookup</button>
           </div>
           <div class="span-2" id="loc-options"></div>
           <label class="span-2">Address
-            <input id="loc-addr" type="text" placeholder="Street, Town">
+            <input id="loc-addr" type="text" placeholder="Street, Town" value="${prefill.address||''}">
           </label>
           <label>City
-            <input id="loc-city" type="text" placeholder="">
+            <input id="loc-city" type="text" placeholder="" value="${prefill.city||''}">
           </label>
           <div id="loc-msg" class="notice hidden span-2"></div>
           <div class="actions span-2">
             <div class="spacer"></div>
-            <button class="btn btn-primary" id="loc-save" type="button">Save</button>
+            <button class="btn btn-primary" id="loc-save">${prefill.id ? 'Save changes' : 'Save'}</button>
           </div>
         </div>
       </div>`;
@@ -930,11 +930,16 @@ function showAddLocationModal(){
       const city = (document.getElementById('loc-city').value||'').trim();
       if(!name){ toast('Name required'); return; }
       try{
-        const ref = await db.collection('locations').add({
-          name, address, postcode, city,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        close({ id: ref.id, name });
+        if(prefill.id){
+          await db.collection('locations').doc(prefill.id).update({ name, address, postcode, city });
+          close({ id: prefill.id, name });
+        }else{
+          const ref = await db.collection('locations').add({
+            name, address, postcode, city,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          close({ id: ref.id, name });
+        }
       }catch(e){
         toast(e.message || 'Could not save');
       }
@@ -951,132 +956,153 @@ function showAddLocationModal(){
 
 /* =================== CALENDAR PAGE (editable: date, time, location) =================== */
 async function loadCalendar(){
-  // Build editor area if missing
   const wrap = document.getElementById('calendar-list');
   if(wrap && !document.getElementById('cal-grid')){
     wrap.innerHTML = `
       <div class="card" id="calendar-card">
         <div class="cal-head">
-          <button class="btn btn-ghost" id="cal-back" aria-label="Back" type="button">◀ Back</button>
+          <button class="btn btn-ghost" id="cal-back" aria-label="Back">◀ Back</button>
           <div class="cal-title" id="cal-title">Month YYYY</div>
           <div>
-            <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month" type="button">◀</button>
-            <button class="btn btn-ghost" id="cal-next" aria-label="Next month" type="button">▶</button>
+            <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month">◀</button>
+            <button class="btn btn-ghost" id="cal-next" aria-label="Next month">▶</button>
           </div>
         </div>
         <div class="cal-grid" id="cal-grid"></div>
         <div class="hr"></div>
-        <div class="form-grid">
+
+        <!-- Editor -->
+        <div class="form-grid" id="cal-editor" style="align-items:end">
           <label>Date<input id="cal-date" type="date"></label>
           <label>Time (optional)<input id="cal-time" type="time"></label>
+
           <label>Location
-            <select id="cal-loc-sel"></select>
+            <select id="cal-loc-select"></select>
           </label>
-          <label class="span-2">Or enter a custom location name
-            <input id="cal-loc-free" type="text" placeholder="(optional)">
-          </label>
-          <div class="actions span-2" style="gap:8px">
-            <button class="btn btn-primary" id="cal-save" type="button">Save schedule</button>
-            <button class="btn" id="cal-add-loc" type="button">+ Add new location…</button>
+          <div class="actions">
+            <button class="btn" id="cal-add-loc">+ Add new location</button>
+          </div>
+
+          <div class="actions span-2">
+            <button class="btn btn-primary" id="cal-save">Save schedule</button>
+            <button class="btn btn-danger" id="cal-clear">Remove from calendar</button>
           </div>
         </div>
       </div>`;
   }
 
-  // render month grid
   await refreshCalendarOnly();
 
-  // Back / month nav
-  document.getElementById('cal-back')?.addEventListener('click', ()=>{ location.hash = 'viewing'; });
-  document.getElementById('cal-prev')?.addEventListener('click', ()=>{ calOffset -= 1; refreshCalendarOnly(); });
-  document.getElementById('cal-next')?.addEventListener('click', ()=>{ calOffset += 1; refreshCalendarOnly(); });
+  // Back button
+  const back = document.getElementById('cal-back');
+  if(back){ back.onclick = ()=>{ location.hash = 'viewing'; }; }
+
+  // Month nav
+  const prev = document.getElementById('cal-prev');
+  const next = document.getElementById('cal-next');
+  if(prev) prev.onclick = ()=>{ calOffset -= 1; refreshCalendarOnly(); };
+  if(next) next.onclick = ()=>{ calOffset += 1; refreshCalendarOnly(); };
 
   // Scheduling editor
+  await populateCalendarEditor(); // load locations + prefill if scheduleTarget exists
+}
+
+async function populateCalendarEditor(){
   const filmId = sessionStorage.getItem('scheduleTarget');
   const dateInp = document.getElementById('cal-date');
   const timeInp = document.getElementById('cal-time');
-  const selLoc  = document.getElementById('cal-loc-sel');
-  const freeLoc = document.getElementById('cal-loc-free');
+  const sel     = document.getElementById('cal-loc-select');
   const saveBtn = document.getElementById('cal-save');
-  const addLocBtn = document.getElementById('cal-add-loc');
+  const clearBtn= document.getElementById('cal-clear');
+  const addBtn  = document.getElementById('cal-add-loc');
+
+  if(!dateInp || !timeInp || !sel) return;
+
+  // Load locations
+  const locSnap = await db.collection('locations').orderBy('name').get();
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
+  sel.innerHTML = `<option value="">Select location…</option>` + 
+    locs.map(l=>`<option value="${l.id}">${l.name||'(no name)'}</option>`).join('');
 
   if(!filmId){
     if(saveBtn) saveBtn.disabled = true;
-    return;
-  }
+    if(clearBtn) clearBtn.disabled = true;
+  }else{
+    if(saveBtn) saveBtn.disabled = false;
+    if(clearBtn) clearBtn.disabled = false;
 
-  // Populate location dropdown
-  const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
-  selLoc.innerHTML = '<option value="">— Select a saved location —</option>';
-  locs.forEach(l=>{
-    const opt = document.createElement('option');
-    opt.value = l.id;
-    opt.textContent = l.name || '';
-    selLoc.appendChild(opt);
-  });
-  const optAdd = document.createElement('option');
-  optAdd.value = '__add';
-  optAdd.textContent = '+ Add new location…';
-  selLoc.appendChild(optAdd);
+    const snap = await db.collection('films').doc(filmId).get();
+    if(snap.exists){
+      const f = snap.data();
+      if(f.viewingDate && typeof f.viewingDate.toDate === 'function'){
+        dateInp.value = f.viewingDate.toDate().toISOString().slice(0,10);
+      } else dateInp.value = '';
+      timeInp.value = f.viewingTime || '';
 
-  // Prefill from film
-  const snap = await db.collection('films').doc(filmId).get();
-  if(snap.exists){
-    const f = snap.data();
-    if(f.viewingDate && typeof f.viewingDate.toDate === 'function'){
-      dateInp.value = f.viewingDate.toDate().toISOString().slice(0,10);
-    }
-    if(f.viewingTime){ timeInp.value = f.viewingTime; }
-    if(f.viewingLocationId){
-      selLoc.value = f.viewingLocationId;
-    }else{
-      selLoc.value = '';
-      freeLoc.value = f.viewingLocationName || '';
-    }
-  }
-
-  selLoc.onchange = async ()=>{
-    if(selLoc.value === '__add'){
-      const newLoc = await showAddLocationModal();
-      if(newLoc){
-        // add to dropdown and select it
-        const o = document.createElement('option');
-        o.value = newLoc.id; o.textContent = newLoc.name || '';
-        selLoc.insertBefore(o, selLoc.querySelector('option[value="__add"]'));
-        selLoc.value = newLoc.id;
-        freeLoc.value = '';
+      if(f.viewingLocationId){
+        sel.value = f.viewingLocationId;
       }else{
-        selLoc.value = '';
+        sel.value = '';
       }
-    }else if(selLoc.value){
-      freeLoc.value = '';
     }
-  };
-  addLocBtn.onclick = ()=> selLoc.dispatchEvent(new Event('change'));
+  }
+
+  if(addBtn){
+    addBtn.onclick = async ()=>{
+      const created = await showAddLocationModal();
+      if(created){
+        await populateCalendarEditor(); // reload options
+        sel.value = created.id;
+      }
+    };
+  }
 
   if(saveBtn){
     saveBtn.onclick = async ()=>{
+      if(!filmId){ alert('Select a film from Viewing or a pill in the calendar first.'); return; }
       const dateVal = dateInp.value;
       const timeVal = timeInp.value || '';
-      const locId   = selLoc.value || '';
-      const locName = locId
-        ? (locs.find(l=>l.id===locId)?.name || '')
-        : (freeLoc.value || '');
-
+      const locId   = sel.value;
       if(!dateVal){ alert('Pick a date'); return; }
+
+      let locName = '';
+      if(locId){
+        const ld = await db.collection('locations').doc(locId).get();
+        locName = ld.exists ? (ld.data().name || '') : '';
+      }
+
       const ts = firebase.firestore.Timestamp.fromDate(new Date(dateVal+'T00:00:00'));
       await db.collection('films').doc(filmId).update({
         viewingDate: ts,
         viewingTime: timeVal,
-        viewingLocationId: locId === '__add' ? '' : locId,
+        viewingLocationId: locId || '',
         viewingLocationName: locName
       });
       await refreshCalendarOnly();
-      sessionStorage.removeItem('scheduleTarget');
-      location.hash = 'viewing';
+      alert('Saved.');
     };
   }
+
+  if(clearBtn){
+    clearBtn.onclick = async ()=>{
+      if(!filmId) return;
+      if(!confirm('Remove from calendar?')) return;
+      await db.collection('films').doc(filmId).update({
+        viewingDate: null,
+        viewingTime: '',
+        viewingLocationId: '',
+        viewingLocationName: ''
+      });
+      dateInp.value=''; timeInp.value=''; sel.value='';
+      await refreshCalendarOnly();
+    };
+  }
+}
+
+/* Prefill editor for a specific film id (called from quick actions) */
+async function prefillCalendarEditor(filmId){
+  sessionStorage.setItem('scheduleTarget', filmId);
+  await populateCalendarEditor();
 }
 
 /* =================== VOTING (4 YES to proceed; show who voted) =================== */
@@ -1273,76 +1299,90 @@ async function loadArchive(){
   });
 }
 
-/* =================== ADDRESSES (Admin only) =================== */
+/* =================== Addresses (Admin) =================== */
 async function loadAddressesAdmin(){
-  if(!els.views.addresses){ return; }
+  if(!els.addressesList){ return; }
   if(state.role !== 'admin'){
-    els.views.addresses.innerHTML = '<div class="card"><div class="notice">Admin only.</div></div>';
+    els.addressesList.innerHTML = '<div class="notice">Admin only.</div>';
     return;
   }
-  const list = els.addressesList || els.views.addresses;
-  list.innerHTML = '';
 
-  try{
-    const snap = await db.collection('locations').orderBy('name').get();
-    const locs = snap.docs.map(d=>({ id:d.id, ...(d.data()) }));
-    if(!locs.length){
-      list.innerHTML = '<div class="card"><div class="notice">No addresses saved yet.</div></div>';
-      return;
-    }
-    locs.forEach(l=>{
-      const html = `
-        <div class="card" data-loc="${l.id}">
-          <div class="form-grid">
-            <label>Name<input type="text" data-loc-edit="name" value="${escapeHtml(l.name||'')}"></label>
-            <label>Postcode<input type="text" data-loc-edit="postcode" value="${escapeHtml(l.postcode||'')}"></label>
-            <label class="span-2">Address<input type="text" data-loc-edit="address" value="${escapeHtml(l.address||'')}"></label>
-            <label>City<input type="text" data-loc-edit="city" value="${escapeHtml(l.city||'')}"></label>
-            <div class="actions span-2">
-              <button class="btn btn-primary" data-loc-act="save">Save</button>
-              <button class="btn btn-danger" data-loc-act="delete">Delete</button>
-              <span class="badge" data-loc-msg style="display:none"></span>
+  const snap = await db.collection('locations').orderBy('name').get();
+  const items = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+
+  els.addressesList.innerHTML = '';
+  if(!items.length){
+    els.addressesList.innerHTML = `
+      <div class="card">
+        <div class="item">
+          <div class="item-left"><div class="item-title">Addresses</div></div>
+          <div class="item-right"><button class="btn btn-primary" id="addr-add">+ Add address</button></div>
+        </div>
+        <div class="notice">No addresses saved yet.</div>
+      </div>`;
+  }else{
+    const header = `
+      <div class="card">
+        <div class="item">
+          <div class="item-left"><div class="item-title">Addresses</div></div>
+          <div class="item-right"><button class="btn btn-primary" id="addr-add">+ Add address</button></div>
+        </div>
+      </div>`;
+    els.addressesList.insertAdjacentHTML('beforeend', header);
+
+    items.forEach(l=>{
+      els.addressesList.insertAdjacentHTML('beforeend', `
+        <div class="card">
+          <div class="item">
+            <div class="item-left">
+              <div>
+                <div class="item-title">${l.name || '(no name)'}</div>
+                <div class="kv" style="margin-top:6px">
+                  <div>Address:</div><div>${l.address||'—'}</div>
+                  <div>City:</div><div>${l.city||'—'}</div>
+                  <div>Postcode:</div><div>${l.postcode||'—'}</div>
+                </div>
+              </div>
+            </div>
+            <div class="item-right">
+              <button class="btn" data-edit-loc="${l.id}">Edit</button>
+              <button class="btn btn-danger" data-del-loc="${l.id}">Delete</button>
             </div>
           </div>
-        </div>`;
-      list.insertAdjacentHTML('beforeend', html);
+        </div>`);
     });
-
-    // Save/Delete handlers
-    list.addEventListener('click', async (e)=>{
-      const card = e.target.closest('[data-loc]');
-      if(!card) return;
-      const id = card.getAttribute('data-loc');
-      if(e.target.matches('[data-loc-act="save"]')){
-        const vals = {};
-        card.querySelectorAll('[data-loc-edit]').forEach(inp=>{
-          vals[inp.getAttribute('data-loc-edit')] = inp.value.trim();
-        });
-        try{
-          await db.collection('locations').doc(id).update(vals);
-          flashMsg(card, 'Saved.');
-        }catch(err){ alert(err.message); }
-      }
-      if(e.target.matches('[data-loc-act="delete"]')){
-        if(!confirm('Delete this address?')) return;
-        try{
-          await db.collection('locations').doc(id).delete();
-          card.remove();
-        }catch(err){ alert(err.message); }
-      }
-    });
-
-  }catch(e){
-    list.innerHTML = `<div class="card"><div class="notice">Error loading addresses: ${escapeHtml(e.message||'')}</div></div>`;
   }
-}
 
-function flashMsg(card, text){
-  const b = card.querySelector('[data-loc-msg]');
-  if(!b) return;
-  b.textContent = text;
-  b.style.display = 'inline-block';
-  setTimeout(()=>{ b.style.display = 'none'; }, 1500);
+  // Add new
+  const addBtn = document.getElementById('addr-add');
+  if(addBtn){
+    addBtn.onclick = async ()=>{
+      const res = await showAddLocationModal();
+      if(res) loadAddressesAdmin();
+    };
+  }
+
+  // Edit
+  els.addressesList.querySelectorAll('[data-edit-loc]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.getAttribute('data-edit-loc');
+      const d = await db.collection('locations').doc(id).get();
+      if(!d.exists) return;
+      const loc = d.data();
+      const res = await showAddLocationModal({ id, ...loc });
+      if(res) loadAddressesAdmin();
+    };
+  });
+
+  // Delete
+  els.addressesList.querySelectorAll('[data-del-loc]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.getAttribute('data-del-loc');
+      if(!confirm('Delete this address?')) return;
+      await db.collection('locations').doc(id).delete();
+      loadAddressesAdmin();
+    };
+  });
 }
 
 /* =================== Admin actions =================== */
