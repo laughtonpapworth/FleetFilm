@@ -16,6 +16,14 @@
   --radius-sm:12px;
 }
 
+/* Collapsible nav (hidden until user toggles or on large screens as you prefer) */
+.nav.collapsed { display: none; }
+
+/* Optional: show nav on larger screens automatically */
+@media (min-width: 980px){
+  .nav.collapsed { display: flex; }
+}
+
 /* Base */
 *{box-sizing:border-box}
 html,body{
