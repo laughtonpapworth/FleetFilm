@@ -213,18 +213,14 @@ footer{
 .cal-pill{
   display:block;
   width:100%;
-  font-size:13px;
-  line-height:1.25;
-  font-weight:800;
-  border-radius:10px;
-  padding:8px 10px;
-  margin:6px 0;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  cursor:pointer;
-  border:1px solid transparent;
-  transition: transform .07s ease, box-shadow .07s ease, filter .07s ease;
+  font-size:12px;
+  font-weight:700;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:4px 8px;
+  margin:2px 0;
+  white-space:normal;        /* allow wrapping */
+  word-break:break-word;     /* long words/titles wrap */
 }
 .cal-pill:hover{
   transform: translateY(-1px);
