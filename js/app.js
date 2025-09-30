@@ -7,6 +7,8 @@
 let app, auth, db;
 
 /* =================== DOM refs =================== */
+addressesTable: document.querySelector('#addresses-table tbody'),
+addressesAdminMsg: document.getElementById('addresses-admin-msg'),
 const els = {
   signedOut: document.getElementById('signed-out'),
   signedIn: document.getElementById('signed-in'),
@@ -272,6 +274,9 @@ function setView(name){
   if(name==='archive')    return loadArchive();
   if(name==='calendar')   return loadCalendar();
   if(name==='addresses')  return loadAddressesAdmin(); // NEW
+  if(name==='calendar')   return loadCalendar();
+  if(name==='addresses')  return loadAddressesAdmin();  // <-- add this line
+
 }
 
 function routerFromHash(){
@@ -1301,89 +1306,55 @@ async function loadArchive(){
 
 /* =================== Addresses (Admin) =================== */
 async function loadAddressesAdmin(){
-  if(!els.addressesList){ return; }
-  if(state.role !== 'admin'){
-    els.addressesList.innerHTML = '<div class="notice">Admin only.</div>';
+  const tbody = els.addressesTable;
+  const msg = els.addressesAdminMsg;
+  if(!tbody) return;
+
+  tbody.innerHTML = '';
+  const snap = await db.collection('locations').orderBy('name').get();
+
+  if (snap.empty) {
+    if (msg){ msg.textContent = 'No saved addresses yet.'; msg.classList.remove('hidden'); }
     return;
   }
+  if (msg) msg.classList.add('hidden');
 
-  const snap = await db.collection('locations').orderBy('name').get();
-  const items = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-
-  els.addressesList.innerHTML = '';
-  if(!items.length){
-    els.addressesList.innerHTML = `
-      <div class="card">
-        <div class="item">
-          <div class="item-left"><div class="item-title">Addresses</div></div>
-          <div class="item-right"><button class="btn btn-primary" id="addr-add">+ Add address</button></div>
-        </div>
-        <div class="notice">No addresses saved yet.</div>
-      </div>`;
-  }else{
-    const header = `
-      <div class="card">
-        <div class="item">
-          <div class="item-left"><div class="item-title">Addresses</div></div>
-          <div class="item-right"><button class="btn btn-primary" id="addr-add">+ Add address</button></div>
-        </div>
-      </div>`;
-    els.addressesList.insertAdjacentHTML('beforeend', header);
-
-    items.forEach(l=>{
-      els.addressesList.insertAdjacentHTML('beforeend', `
-        <div class="card">
-          <div class="item">
-            <div class="item-left">
-              <div>
-                <div class="item-title">${l.name || '(no name)'}</div>
-                <div class="kv" style="margin-top:6px">
-                  <div>Address:</div><div>${l.address||'—'}</div>
-                  <div>City:</div><div>${l.city||'—'}</div>
-                  <div>Postcode:</div><div>${l.postcode||'—'}</div>
-                </div>
-              </div>
-            </div>
-            <div class="item-right">
-              <button class="btn" data-edit-loc="${l.id}">Edit</button>
-              <button class="btn btn-danger" data-del-loc="${l.id}">Delete</button>
-            </div>
-          </div>
-        </div>`);
-    });
-  }
-
-  // Add new
-  const addBtn = document.getElementById('addr-add');
-  if(addBtn){
-    addBtn.onclick = async ()=>{
-      const res = await showAddLocationModal();
-      if(res) loadAddressesAdmin();
-    };
-  }
-
-  // Edit
-  els.addressesList.querySelectorAll('[data-edit-loc]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.getAttribute('data-edit-loc');
-      const d = await db.collection('locations').doc(id).get();
-      if(!d.exists) return;
-      const loc = d.data();
-      const res = await showAddLocationModal({ id, ...loc });
-      if(res) loadAddressesAdmin();
-    };
+  snap.docs.forEach(d=>{
+    const l = { id:d.id, ...d.data() };
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${l.name || ''}</td>
+      <td>${l.address || ''}</td>
+      <td>${l.city || ''}</td>
+      <td>${l.postcode || ''}</td>
+      <td>
+        <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
+        <button class="btn btn-danger" data-del="${l.id}">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
   });
 
-  // Delete
-  els.addressesList.querySelectorAll('[data-del-loc]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const id = btn.getAttribute('data-del-loc');
-      if(!confirm('Delete this address?')) return;
-      await db.collection('locations').doc(id).delete();
+  tbody.addEventListener('click', async (e)=>{
+    const editBtn = e.target.closest('button[data-edit]');
+    const delBtn = e.target.closest('button[data-del]');
+    if (editBtn){
+      const id = editBtn.dataset.edit;
+      // Reuse add-location modal in "edit" mode (prefill + save)
+      await showAddLocationModal({ id });
       loadAddressesAdmin();
-    };
+    }
+    if (delBtn){
+      const id = delBtn.dataset.del;
+      if (confirm('Delete this address?')){
+        await db.collection('locations').doc(id).delete();
+        loadAddressesAdmin();
+      }
+    }
   });
+
+  document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
 }
+
 
 /* =================== Admin actions =================== */
 async function adminAction(action, filmId){
