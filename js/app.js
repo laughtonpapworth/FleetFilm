@@ -7,8 +7,6 @@
 let app, auth, db;
 
 /* =================== DOM refs =================== */
-addressesTable: document.querySelector('#addresses-table tbody'),
-addressesAdminMsg: document.getElementById('addresses-admin-msg'),
 const els = {
   signedOut: document.getElementById('signed-out'),
   signedIn: document.getElementById('signed-in'),
@@ -26,6 +24,9 @@ const els = {
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
   addressesList: document.getElementById('addresses-list'),
+
+  addressesTable: document.querySelector('#addresses-table tbody'),
+  addressesAdminMsg: document.getElementById('addresses-admin-msg'),
 
   // VIEWS
   views: {
