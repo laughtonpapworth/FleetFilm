@@ -257,27 +257,24 @@ function initFirebaseOnce(){
 function setView(name){
   // Nav active state
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
-  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
+  if (els.navButtons[name]) els.navButtons[name].classList.add('active');
 
   // Show/hide views
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
-  if(els.views[name]) els.views[name].classList.remove('hidden');
+  if (els.views[name]) els.views[name].classList.remove('hidden');
 
   // Route
-  if(name==='pending')    return loadPending();
-  if(name==='basic')      return loadBasic();
-  if(name==='viewing')    return loadViewing();
-  if(name==='vote')       return loadVote();
-  if(name==='uk')         return loadUk();
-  if(name==='green')      return loadGreen();
-  if(name==='nextprog')   return loadNextProgramme();
-  if(name==='discarded')  return loadDiscarded();
-  if(name==='archive')    return loadArchive();
-  if(name==='calendar')   return loadCalendar();
-  if(name==='addresses')  return loadAddressesAdmin(); // NEW
-  if(name==='calendar')   return loadCalendar();
-  if(name==='addresses')  return loadAddressesAdmin();  // <-- add this line
-
+  if (name==='pending')    return loadPending();
+  if (name==='basic')      return loadBasic();
+  if (name==='viewing')    return loadViewing();
+  if (name==='vote')       return loadVote();
+  if (name==='uk')         return loadUk();
+  if (name==='green')      return loadGreen();
+  if (name==='nextprog')   return loadNextProgramme();
+  if (name==='discarded')  return loadDiscarded();
+  if (name==='archive')    return loadArchive();
+  if (name==='calendar')   return loadCalendar();
+  if (name==='addresses')  return loadAddressesAdmin();
 }
 
 function routerFromHash(){
@@ -324,33 +321,20 @@ function attachHandlers(){
   if(els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
   // ---- Auth buttons (popup then safe redirect fallback) ----
+// ---- Auth buttons (force redirect; no popup) ----
+   
 if (els.googleBtn) {
   els.googleBtn.addEventListener('click', async () => {
     const provider = new firebase.auth.GoogleAuthProvider();
-
-    const mustRedirect =
-      window.crossOriginIsolated ||
-      !!document.querySelector('meta[http-equiv="Cross-Origin-Opener-Policy"]') ||
-      !!document.querySelector('meta[http-equiv="Cross-Origin-Embedder-Policy"]');
-
-    try {
-      if (mustRedirect) {
-        await auth.signInWithRedirect(provider);
-      } else {
-        await auth.signInWithPopup(provider);
-      }
-    } catch (err) {
-      console.warn('Popup blocked/failed, using redirect:', err && err.message);
-      await auth.signInWithRedirect(provider);
-    }
+    await auth.signInWithRedirect(provider);
   });
 }
 
-// once during boot (after auth is created):
+// Optional: surface redirect errors after returning from Google
 auth.getRedirectResult().catch(err => {
-  console.warn('getRedirectResult error:', err && err.message);
+  console.warn('Redirect sign-in error:', err && err.message);
 });
-
+   
   if(els.emailSignInBtn){
     els.emailSignInBtn.addEventListener('click', async () => {
       try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
@@ -1352,23 +1336,27 @@ async function loadAddressesAdmin(){
     tbody.appendChild(tr);
   });
 
-  tbody.addEventListener('click', async (e)=>{
-    const editBtn = e.target.closest('button[data-edit]');
-    const delBtn = e.target.closest('button[data-del]');
-    if (editBtn){
-      const id = editBtn.dataset.edit;
-      // Reuse add-location modal in "edit" mode (prefill + save)
-      await showAddLocationModal({ id });
+tbody.addEventListener('click', async (e)=>{
+  const editBtn = e.target.closest('button[data-edit]');
+  const delBtn  = e.target.closest('button[data-del]');
+
+  if (editBtn){
+    const id = editBtn.dataset.edit;
+    const snap = await db.collection('locations').doc(id).get();
+    const data = snap.exists ? snap.data() : {};
+    await showAddLocationModal({ id, ...data }); // prefill with real values
+    loadAddressesAdmin();
+  }
+
+  if (delBtn){
+    const id = delBtn.dataset.del;
+    if (confirm('Delete this address?')){
+      await db.collection('locations').doc(id).delete();
       loadAddressesAdmin();
     }
-    if (delBtn){
-      const id = delBtn.dataset.del;
-      if (confirm('Delete this address?')){
-        await db.collection('locations').doc(id).delete();
-        loadAddressesAdmin();
-      }
-    }
-  });
+  }
+});
+
 
   document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
 }
