@@ -324,16 +324,33 @@ function attachHandlers(){
   if(els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
   // ---- Auth buttons (popup then safe redirect fallback) ----
-  if(els.googleBtn){
-    els.googleBtn.addEventListener('click', async () => {
-      try{
-        await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-      }catch(err){
-        console.warn('Popup sign-in failed, falling back to redirect:', err && err.message);
-        await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+if (els.googleBtn) {
+  els.googleBtn.addEventListener('click', async () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+
+    const mustRedirect =
+      window.crossOriginIsolated ||
+      !!document.querySelector('meta[http-equiv="Cross-Origin-Opener-Policy"]') ||
+      !!document.querySelector('meta[http-equiv="Cross-Origin-Embedder-Policy"]');
+
+    try {
+      if (mustRedirect) {
+        await auth.signInWithRedirect(provider);
+      } else {
+        await auth.signInWithPopup(provider);
       }
-    });
-  }
+    } catch (err) {
+      console.warn('Popup blocked/failed, using redirect:', err && err.message);
+      await auth.signInWithRedirect(provider);
+    }
+  });
+}
+
+// once during boot (after auth is created):
+auth.getRedirectResult().catch(err => {
+  console.warn('getRedirectResult error:', err && err.message);
+});
+
   if(els.emailSignInBtn){
     els.emailSignInBtn.addEventListener('click', async () => {
       try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
