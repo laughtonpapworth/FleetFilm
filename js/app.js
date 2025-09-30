@@ -1416,6 +1416,7 @@ async function adminAction(action, filmId){
 }
 
 /* =================== Boot =================== */
+/* =================== Boot =================== */
 async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
   if(!ok){
@@ -1428,6 +1429,24 @@ async function boot(){
   } catch (e) {
     alert('Missing Firebase config. Check js/firebase-config.js.');
     return;
+  }
+
+  // Ensure durable session on mobile Safari
+  try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  } catch (e) {
+    console.warn('setPersistence failed:', e && e.message);
+  }
+
+  // Handle Google redirect result *immediately* after init.
+  // If the user just came back from Google, this resolves before onAuthStateChanged fires.
+  try {
+    const res = await auth.getRedirectResult();
+    if (res && (res.user || res.credential)) {
+      console.log('Handled Google redirect result.');
+    }
+  } catch (e) {
+    console.warn('Redirect sign-in error:', e && e.message);
   }
 
   attachHandlers();
@@ -1445,3 +1464,4 @@ async function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
+
