@@ -149,22 +149,6 @@
       <div class="list" id="archive-list"></div>
     </section>
 
-    <!-- CALENDAR (dedicated page) -->
-    <section id="view-calendar" class="card hidden" aria-label="Calendar">
-      <h1>Calendar</h1>
-
-      <div class="card" style="padding:14px">
-        <div class="cal-head">
-          <button id="cal-back" class="btn btn-ghost">← Back to Viewing</button>
-          <div class="cal-title" id="cal-title">Month YYYY</div>
-          <div style="display:flex; gap:6px">
-            <button id="cal-prev" class="btn btn-ghost" aria-label="Previous month">◀</button>
-            <button id="cal-next" class="btn btn-ghost" aria-label="Next month">▶</button>
-          </div>
-        </div>
-        <div class="cal-grid" id="cal-grid"></div>
-      </div>
-
       <!-- Addresses (dedicated page) -->
       <section id="view-addresses" class="hidden">
   <div class="card">
@@ -190,7 +174,12 @@
   </div>
 </section>
 
+    <!-- CALENDAR (dedicated page) -->
+    <section id="view-calendar" class="card hidden" aria-label="Calendar">
+ <h1>Calendar</h1>
+<div class="list" id="calendar-list"></div>
 
+    
       <!-- Editor prefilled when coming from Viewing > Set date & time -->
       <div class="card" style="padding:14px; margin-top:10px">
         <div class="form-grid">
