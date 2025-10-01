@@ -23,8 +23,8 @@ const els = {
   nextProgList: document.getElementById('nextprog-list'),
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
-  addressesList: document.getElementById('addresses-list'),
 
+  // Addresses admin
   addressesTable: document.querySelector('#addresses-table tbody'),
   addressesAdminMsg: document.getElementById('addresses-admin-msg'),
 
@@ -41,7 +41,7 @@ const els = {
     discarded:  document.getElementById('view-discarded'),
     archive:    document.getElementById('view-archive'),
     calendar:   document.getElementById('view-calendar'),
-    addresses:  document.getElementById('view-addresses'),   // NEW: admin-only
+    addresses:  document.getElementById('view-addresses'),
   },
 
   // NAV BUTTONS
@@ -57,7 +57,7 @@ const els = {
     discarded:  document.getElementById('nav-discarded'),
     archive:    document.getElementById('nav-archive'),
     calendar:   document.getElementById('nav-calendar'),
-    addresses:  document.getElementById('nav-addresses'),    // NEW: admin-only
+    addresses:  document.getElementById('nav-addresses'),
   },
 
   // SUBMIT
@@ -106,8 +106,7 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(({text, id}) => 
-      // inline style ensures proper wrapping even if CSS didn’t load or regressed
+    const pills = items.map(({text, id}) =>
       `<button class="cal-pill" data-film-id="${id}" style="white-space:normal;display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
     ).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
@@ -179,16 +178,18 @@ function openCalendarQuickActions(film){
 
   overlay.querySelector('#calqa-edit').onclick = async ()=>{
     close();
-    // prefill the calendar editor with this film’s values and focus it
+    // Ensure we're on the calendar view
+    if (location.hash.replace('#','') !== 'calendar') location.hash = 'calendar';
+    // Prefill editor with this film
     await prefillCalendarEditor(film.id);
-    document.getElementById('calendar-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const card = document.getElementById('calendar-card');
+    if(card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   overlay.querySelector('#calqa-details').onclick = ()=>{
     close();
-    // jump to Viewing list and try to focus this film card
     location.hash = 'viewing';
-    setTimeout(async ()=>{
+    setTimeout(()=>{
       const card = document.querySelector(`[data-film-card="${film.id}"]`);
       if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
     }, 250);
@@ -257,24 +258,24 @@ function initFirebaseOnce(){
 function setView(name){
   // Nav active state
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
-  if (els.navButtons[name]) els.navButtons[name].classList.add('active');
+  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
 
   // Show/hide views
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
-  if (els.views[name]) els.views[name].classList.remove('hidden');
+  if(els.views[name]) els.views[name].classList.remove('hidden');
 
   // Route
-  if (name==='pending')    return loadPending();
-  if (name==='basic')      return loadBasic();
-  if (name==='viewing')    return loadViewing();
-  if (name==='vote')       return loadVote();
-  if (name==='uk')         return loadUk();
-  if (name==='green')      return loadGreen();
-  if (name==='nextprog')   return loadNextProgramme();
-  if (name==='discarded')  return loadDiscarded();
-  if (name==='archive')    return loadArchive();
-  if (name==='calendar')   return loadCalendar();
-  if (name==='addresses')  return loadAddressesAdmin();
+  if(name==='pending')    return loadPending();
+  if(name==='basic')      return loadBasic();
+  if(name==='viewing')    return loadViewing();
+  if(name==='vote')       return loadVote();
+  if(name==='uk')         return loadUk();
+  if(name==='green')      return loadGreen();
+  if(name==='nextprog')   return loadNextProgramme();
+  if(name==='discarded')  return loadDiscarded();
+  if(name==='archive')    return loadArchive();
+  if(name==='calendar')   return loadCalendar();
+  if(name==='addresses')  return loadAddressesAdmin();
 }
 
 function routerFromHash(){
@@ -287,7 +288,10 @@ function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
   els.nav.classList.toggle('hidden', !on);
-  // bottom mobile tabbar (if exists) is purely CSS-visible
+
+  // Hide/show mobile tabbar too
+  const mbar = document.getElementById('mobile-tabbar');
+  if (mbar) mbar.classList.toggle('hidden', !on);
 }
 
 // Create a user doc if missing
@@ -320,21 +324,22 @@ function attachHandlers(){
   if(els.signOut) els.signOut.addEventListener('click', () => auth.signOut());
   if(els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
-  // ---- Auth buttons (popup then safe redirect fallback) ----
-// ---- Auth buttons (force redirect; no popup) ----
-   
-if (els.googleBtn) {
-  els.googleBtn.addEventListener('click', async () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithRedirect(provider);
-  });
-}
+  // ---- Auth buttons (force redirect; no popup) ----
+  if (els.googleBtn) {
+    els.googleBtn.addEventListener('click', async () => {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithRedirect(provider);
+    });
+  }
 
-// Optional: surface redirect errors after returning from Google
-auth.getRedirectResult().catch(err => {
-  console.warn('Redirect sign-in error:', err && err.message);
-});
-   
+  // Surface redirect errors after returning from Google
+  if (auth && auth.getRedirectResult) {
+    auth.getRedirectResult().catch(err => {
+      console.warn('Redirect sign-in error:', err && err.message);
+      alert(err && err.message ? err.message : 'Sign-in failed.');
+    });
+  }
+
   if(els.emailSignInBtn){
     els.emailSignInBtn.addEventListener('click', async () => {
       try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
@@ -348,7 +353,7 @@ auth.getRedirectResult().catch(err => {
 
   window.addEventListener('hashchange', routerFromHash);
 
-  // mobile tabbar (if present)
+  // mobile tabbar
   const mbar = document.getElementById('mobile-tabbar');
   if(mbar){
     mbar.addEventListener('click', (e)=>{
@@ -866,7 +871,16 @@ async function loadViewing(){
 
 /* ---------- Add Location Modal (with postcode lookup + selectable results) ---------- */
 function showAddLocationModal(prefill={}){
-  return new Promise(resolve=>{
+  return new Promise(async resolve=>{
+    // If only id provided, fetch the doc to prefill
+    if (prefill.id && (!prefill.name && !prefill.address && !prefill.postcode && !prefill.city)) {
+      const snap = await db.collection('locations').doc(prefill.id).get();
+      if (snap.exists) {
+        const d = snap.data();
+        prefill = { id: prefill.id, name: d.name||'', address: d.address||'', postcode: d.postcode||'', city: d.city||'' };
+      }
+    }
+
     const overlay = document.createElement('div');
     overlay.className='modal-overlay';
     overlay.innerHTML = `
@@ -1336,31 +1350,25 @@ async function loadAddressesAdmin(){
     tbody.appendChild(tr);
   });
 
-tbody.addEventListener('click', async (e)=>{
-  const editBtn = e.target.closest('button[data-edit]');
-  const delBtn  = e.target.closest('button[data-del]');
-
-  if (editBtn){
-    const id = editBtn.dataset.edit;
-    const snap = await db.collection('locations').doc(id).get();
-    const data = snap.exists ? snap.data() : {};
-    await showAddLocationModal({ id, ...data }); // prefill with real values
-    loadAddressesAdmin();
-  }
-
-  if (delBtn){
-    const id = delBtn.dataset.del;
-    if (confirm('Delete this address?')){
-      await db.collection('locations').doc(id).delete();
+  tbody.onclick = async (e)=>{
+    const editBtn = e.target.closest('button[data-edit]');
+    const delBtn  = e.target.closest('button[data-del]');
+    if (editBtn){
+      const id = editBtn.dataset.edit;
+      await showAddLocationModal({ id }); // fetch + prefill happens inside
       loadAddressesAdmin();
     }
-  }
-});
-
+    if (delBtn){
+      const id = delBtn.dataset.del;
+      if (confirm('Delete this address?')){
+        await db.collection('locations').doc(id).delete();
+        loadAddressesAdmin();
+      }
+    }
+  };
 
   document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
 }
-
 
 /* =================== Admin actions =================== */
 async function adminAction(action, filmId){
@@ -1416,7 +1424,6 @@ async function adminAction(action, filmId){
 }
 
 /* =================== Boot =================== */
-/* =================== Boot =================== */
 async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
   if(!ok){
@@ -1429,24 +1436,6 @@ async function boot(){
   } catch (e) {
     alert('Missing Firebase config. Check js/firebase-config.js.');
     return;
-  }
-
-  // Ensure durable session on mobile Safari
-  try {
-    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-  } catch (e) {
-    console.warn('setPersistence failed:', e && e.message);
-  }
-
-  // Handle Google redirect result *immediately* after init.
-  // If the user just came back from Google, this resolves before onAuthStateChanged fires.
-  try {
-    const res = await auth.getRedirectResult();
-    if (res && (res.user || res.credential)) {
-      console.log('Handled Google redirect result.');
-    }
-  } catch (e) {
-    console.warn('Redirect sign-in error:', e && e.message);
   }
 
   attachHandlers();
@@ -1464,4 +1453,3 @@ async function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
-
