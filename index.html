@@ -24,7 +24,8 @@
   </div>
 
   <!-- Start collapsed; JS will show/hide this whole nav by login state -->
-  <nav id="nav" class="nav collapsed">
+  <nav id="nav" class="nav hidden"> … </nav>
+  
     <button id="nav-submit"    data-view="submit">Submit</button>
     <button id="nav-intake"    data-view="pending">Pending Films</button>
     <button id="nav-basic"     data-view="basic">Basic Criteria</button>
@@ -225,7 +226,7 @@
 </script>
 
 <!-- Mobile bottom tab bar (JS hides it when signed out) -->
-<nav id="mobile-tabbar" class="mobile-tabbar">
+<nav id="mobile-tabbar" class="mobile-tabbar hidden"> … </nav>
   <button data-view="submit"><span class="ico">➕</span><span>Submit</span></button>
   <button data-view="pending"><span class="ico">📝</span><span>Pending</span></button>
   <button data-view="basic"><span class="ico">✅</span><span>Basic</span></button>
