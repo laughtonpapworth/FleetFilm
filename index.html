@@ -9,7 +9,7 @@
   <link rel="icon" href="img/FFIcon.png" sizes="32x32" type="image/png">
   <title>Fleet Film</title>
   <link rel="stylesheet" href="css/styles.css">
-  <!-- Firebase (compat for simplicity) -->
+  <!-- Firebase (compat) -->
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -20,11 +20,13 @@
 <header class="header">
   <div class="brand">
     <img class="logo" src="img/FFLogo.png" alt="Fleet Film">
+    <div class="title">Fleet Film</div>
   </div>
 
-  <nav id="nav" class="nav">
+  <!-- Start collapsed; JS will show/hide this whole nav by login state -->
+  <nav id="nav" class="nav collapsed">
     <button id="nav-submit"    data-view="submit">Submit</button>
-    <button id="nav-intake"    data-view="intake">Pending Films</button>
+    <button id="nav-intake"    data-view="pending">Pending Films</button>
     <button id="nav-basic"     data-view="basic">Basic Criteria</button>
     <button id="nav-viewing"   data-view="viewing">Viewing</button>
     <button id="nav-vote"      data-view="vote">Voting</button>
@@ -34,12 +36,13 @@
     <button id="nav-discarded" data-view="discarded">Discarded</button>
     <button id="nav-archive"   data-view="archive">Archive</button>
     <button id="nav-calendar"  data-view="calendar">Calendar</button>
-    <button id="nav-addresses" class="btn" data-view="addresses">Addresses</button>
-    <button id="btn-menu" class="btn btn-ghost hidden" aria-expanded="false" aria-controls="nav">Menu</button>
-     <nav id="nav" class="nav collapsed">  <!-- note: collapsed by default -->
+    <button id="nav-addresses" data-view="addresses">Addresses</button>
   </nav>
 
-  <button id="btn-signout" class="btn btn-ghost">Sign out</button>
+  <div class="header-actions">
+    <button id="nav-toggle" class="btn btn-ghost">Menu</button>
+    <button id="btn-signout" class="btn btn-ghost">Sign out</button>
+  </div>
 </header>
 
 <main class="container">
@@ -71,12 +74,11 @@
   <!-- Signed in -->
   <div id="signed-in" class="hidden">
 
-    <!-- Pending Films (intake only) -->
+    <!-- Pending Films -->
     <section id="view-intake" class="card" aria-label="Pending films">
       <h1>Pending Films</h1>
-      <div id="film-toolbar" class="toolbar">
+      <div class="toolbar" id="film-toolbar">
         <input id="filter-q" type="text" placeholder="Search title…">
-        <!-- Optional status filter kept, but list shows only 'intake' items now -->
         <select id="filter-status">
           <option value="">All stages</option>
           <option value="intake">Unprocessed</option>
@@ -150,51 +152,58 @@
       <div class="list" id="archive-list"></div>
     </section>
 
-      <!-- Addresses (dedicated page) -->
-      <section id="view-addresses" class="hidden">
-  <div class="card">
-    <h2>Saved Addresses</h2>
-    <div id="addresses-admin-msg" class="notice hidden"></div>
-    <div class="actions" style="margin-bottom:8px">
-      <button id="addr-refresh" class="btn">Refresh</button>
-    </div>
-    <div class="table-wrap">
-      <table class="table" id="addresses-table">
-        <thead>
-          <tr>
-            <th style="width:22%">Name</th>
-            <th style="width:30%">Address</th>
-            <th style="width:18%">City</th>
-            <th style="width:14%">Postcode</th>
-            <th style="width:16%">Actions</th>
-          </tr>
-        </thead>
-        <tbody><!-- filled by JS --></tbody>
-      </table>
-    </div>
-  </div>
-</section>
+    <!-- Addresses (admin) -->
+    <section id="view-addresses" class="card hidden" aria-label="Saved addresses">
+      <h1>Saved Addresses</h1>
+      <div id="addresses-admin-msg" class="notice hidden"></div>
+      <div class="actions" style="margin-bottom:8px">
+        <button id="addr-refresh" class="btn">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="addresses-table">
+          <thead>
+            <tr>
+              <th style="width:22%">Name</th>
+              <th style="width:30%">Address</th>
+              <th style="width:18%">City</th>
+              <th style="width:14%">Postcode</th>
+              <th style="width:16%">Actions</th>
+            </tr>
+          </thead>
+          <tbody><!-- filled by JS --></tbody>
+        </table>
+      </div>
+    </section>
 
-    <!-- CALENDAR (dedicated page) -->
+    <!-- Calendar -->
     <section id="view-calendar" class="card hidden" aria-label="Calendar">
- <h1>Calendar</h1>
-<div class="list" id="calendar-list"></div>
+      <h1>Calendar</h1>
+      <div class="list" id="calendar-list"></div>
 
-    
-      <!-- Editor prefilled when coming from Viewing > Set date & time -->
-      <div class="card" style="padding:14px; margin-top:10px">
-        <div class="form-grid">
-          <label>Date
-            <input id="cal-date" type="date">
+      <!-- Editor pane (prefilled from calendar or Viewing) -->
+      <div class="card" style="padding:14px; margin-top:10px" id="calendar-card">
+        <div class="cal-head">
+          <button class="btn btn-ghost" id="cal-back" aria-label="Back">◀ Back</button>
+          <div class="cal-title" id="cal-title">Month YYYY</div>
+          <div>
+            <button class="btn btn-ghost" id="cal-prev" aria-label="Previous month">◀</button>
+            <button class="btn btn-ghost" id="cal-next" aria-label="Next month">▶</button>
+          </div>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="hr"></div>
+        <div class="form-grid" id="cal-editor" style="align-items:end">
+          <label>Date<input id="cal-date" type="date"></label>
+          <label>Time (optional)<input id="cal-time" type="time"></label>
+          <label>Location
+            <select id="cal-loc-select"></select>
           </label>
-          <label>Time
-            <input id="cal-time" type="time" placeholder="19:30">
-          </label>
-          <label class="span-2">Location (read only here; set on Viewing)
-            <input id="cal-loc" type="text" disabled>
-          </label>
+          <div class="actions">
+            <button class="btn" id="cal-add-loc">+ Add new location</button>
+          </div>
           <div class="actions span-2">
-            <button id="cal-save" class="btn btn-primary">Save</button>
+            <button class="btn btn-primary" id="cal-save">Save schedule</button>
+            <button class="btn btn-danger" id="cal-clear">Remove from calendar</button>
           </div>
         </div>
       </div>
@@ -215,8 +224,7 @@
   }
 </script>
 
-
-  <!-- Mobile bottom tab bar -->
+<!-- Mobile bottom tab bar (JS hides it when signed out) -->
 <nav id="mobile-tabbar" class="mobile-tabbar">
   <button data-view="submit"><span class="ico">➕</span><span>Submit</span></button>
   <button data-view="pending"><span class="ico">📝</span><span>Pending</span></button>
@@ -231,6 +239,7 @@
   <button data-view="calendar"><span class="ico">🗓️</span><span>Calendar</span></button>
   <button data-view="addresses"><span class="ico">📍</span><span>Addresses</span></button>
 </nav>
-  <div id="modal-root"></div>
+
+<div id="modal-root"></div>
 </body>
 </html>
