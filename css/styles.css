@@ -1,27 +1,18 @@
 /* ===== Fleet Film – Marquee Warm (light, friendly, club vibe) ===== */
 
 :root{
-  /* Warm palette */
-  --page:#faf7f2;         /* page background */
-  --card:#ffffff;         /* cards/nav pills */
-  --ink:#1f2937;          /* primary text */
-  --muted:#566072;        /* secondary text */
-  --border:#e6e0d8;       /* soft warm border */
-  --accent:#c98a00;       /* cinema gold */
-  --accent-ink:#2d1e00;   /* readable on gold */
+  --page:#faf7f2;
+  --card:#ffffff;
+  --ink:#1f2937;
+  --muted:#566072;
+  --border:#e6e0d8;
+  --accent:#c98a00;
+  --accent-ink:#2d1e00;
   --danger:#dc2626;
   --warn:#d97706;
 
   --radius-lg:18px;
   --radius-sm:12px;
-}
-
-/* Collapsible nav (hidden until user toggles or on large screens as you prefer) */
-.nav.collapsed { display: none; }
-
-/* Optional: show nav on larger screens automatically */
-@media (min-width: 980px){
-  .nav.collapsed { display: flex; }
 }
 
 /* Base */
@@ -46,14 +37,19 @@ a:hover{opacity:.9}
   display:flex; gap:12px; align-items:center; justify-content:space-between;
   flex-wrap:wrap;
 }
+.header-actions{ display:flex; gap:8px; align-items:center; }
 .brand{display:flex; gap:12px; align-items:center}
 .brand .logo{height:36px; width:auto}
 .brand .title{font-family: Nunito, sans-serif; font-weight:800; letter-spacing:.08em; font-size:20px}
 
-/* Tabbed nav – pills */
+/* Collapsible nav */
 .nav{
   display:flex; gap:8px; align-items:center; flex-wrap:wrap;
   padding:6px 0; overflow-x:auto;
+}
+.nav.collapsed{ display:none; }
+@media (min-width: 980px){
+  .nav.collapsed{ display:flex; }
 }
 .nav button{
   font-size:15px; font-weight:800; letter-spacing:.01em;
@@ -124,6 +120,7 @@ a:hover{opacity:.9}
 .btn-warn{background:#fde68a; color:#5a3f00; border-color:#facc15}
 .btn-danger{background:#fee2e2; color:#7f1d1d; border-color:#fecaca}
 .btn-ghost{background:var(--card); border:1px solid var(--border)}
+.big{font-size:16px; padding:12px 16px}
 
 /* Utility */
 .notice{
@@ -151,14 +148,20 @@ textarea{min-height:110px}
 .form-grid{display:grid; gap:12px; grid-template-columns: repeat(2, minmax(0,1fr))}
 .span-2{grid-column: span 2}
 
-/* Modal (pickers & add location) */
+/* Table */
+.table-wrap{overflow:auto}
+.table{width:100%; border-collapse: collapse; font-size:14px}
+.table th, .table td{border:1px solid var(--border); padding:8px; text-align:left}
+.table th{background:#fafafa;}
+
+/* Modal */
 .modal-overlay{
   position:fixed; inset:0; background:rgba(0,0,0,.35);
   display:flex; align-items:center; justify-content:center; z-index:100;
 }
 .modal{
-  width:min(900px,94vw); max-height:86vh; overflow:auto;
-  background:#fff; border:1px solid var(--border); border-radius:18px;
+  width:min(860px,94vw); max-height:86vh; overflow:auto;
+  background:#fff; border:1px solid var(--border); border-radius:16px;
   box-shadow:0 18px 48px rgba(0,0,0,.18); padding:14px;
 }
 .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px}
@@ -175,10 +178,9 @@ footer{
   background:#ffffffcc; backdrop-filter: blur(6px);
   border-top:1px solid var(--border);
   padding:10px 12px; font-size:13px; color:var(--muted); text-align:center;
-  z-index:80; /* stay below mobile tabbar */
 }
 
-/* === Detail views (Basic, UK, Viewing, Voting, Green, Discarded) === */
+/* Detail views */
 .detail-card .item.item--split{
   grid-template-columns: minmax(260px, 360px) 1fr;
   align-items: start;
@@ -193,7 +195,7 @@ footer{
 .detail-card textarea{ line-height: 1.35; }
 .detail-card .actions{ justify-content:flex-start }
 
-/* ===== Calendar (Monday-first) ===== */
+/* ===== Calendar ===== */
 .cal-head{
   display:flex; align-items:center; justify-content:space-between;
   gap:10px; margin-bottom:10px;
@@ -201,7 +203,7 @@ footer{
 .cal-title{ font-weight:800; letter-spacing:.02em }
 .cal-grid{
   display:grid;
-  grid-template-columns: repeat(7, 1fr); /* Mon ... Sun */
+  grid-template-columns: repeat(7, 1fr);
   gap:6px;
 }
 .cal-wd{
@@ -209,54 +211,30 @@ footer{
   padding:4px 0;
 }
 .cal-cell{
-  min-height:100px; border:1px solid var(--border); border-radius:12px;
-  padding:10px;
+  min-height:84px; border:1px solid var(--border); border-radius:10px;
+  padding:8px;
   background:#fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,.03);
 }
 .cal-cell.empty{ background:#fafafa }
-.cal-day{ font-weight:800; font-size:12px; color:var(--muted); margin-bottom:8px }
+.cal-day{ font-weight:800; font-size:12px; color:var(--muted); margin-bottom:6px }
 
-/* Calendar pills: clickable, colourful, truncate long titles */
+/* Make event pills wrap and click nicely */
 .cal-pill{
-  display:block;
-  width:100%;
-  font-size:12px;
-  font-weight:700;
-  border:1px solid var(--border);
-  border-radius:999px;
-  padding:4px 8px;
-  margin:2px 0;
-  white-space:normal;        /* allow wrapping */
-  word-break:break-word;     /* long words/titles wrap */
+  font-size:12px; font-weight:700; border:1px solid var(--border);
+  border-radius:10px; padding:6px 8px; margin:3px 0; display:block;
+  white-space:normal; word-break:break-word; text-align:left; background:#fff;
+  cursor:pointer;
 }
-.cal-pill:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0,0,0,.08);
-  filter: brightness(1.02);
-}
-/* Rotate friendly colours so multiple events read clearly */
-.cal-cell .cal-pill:nth-of-type(6n+1){ background:#e0f2fe; border-color:#bae6fd; color:#0b3a5b; } /* sky */
-.cal-cell .cal-pill:nth-of-type(6n+2){ background:#dcfce7; border-color:#bbf7d0; color:#064e3b; } /* green */
-.cal-cell .cal-pill:nth-of-type(6n+3){ background:#fde68a; border-color:#fcd34d; color:#5a3f00; } /* amber */
-.cal-cell .cal-pill:nth-of-type(6n+4){ background:#fce7f3; border-color:#fbcfe8; color:#6b214b; } /* pink */
-.cal-cell .cal-pill:nth-of-type(6n+5){ background:#e9d5ff; border-color:#d8b4fe; color:#4b217a; } /* purple */
-.cal-cell .cal-pill:nth-of-type(6n+6){ background:#fee2e2; border-color:#fecaca; color:#7f1d1d; } /* red */
-
-a.cal-pill { text-decoration:none; }
-.cal-pill.is-empty{ background:#f7f7f7; border-color:#eee; color:#8b8b8b; }
 
 /* ===== Mobile bottom tab bar ===== */
 .mobile-tabbar{
-  position:fixed; bottom:0; left:0; right:0; z-index:120;
-  background:#ffffffee; border-top:1px solid var(--border);
-  backdrop-filter: blur(6px);
-  display:none; grid-template-columns: repeat(5, 1fr); gap:0;
+  position:fixed; bottom:0; left:0; right:0; z-index:60;
+  background:#ffffff; border-top:1px solid var(--border);
+  display:grid; grid-template-columns: repeat(5, 1fr); gap:0;
 }
 .mobile-tabbar button{
-  appearance:none; background:#fff0; border:none; padding:10px 6px;
+  appearance:none; background:#fff; border:none; padding:10px 6px;
   font-size:12px; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:4px;
-  font-weight:800;
 }
 .mobile-tabbar .ico{font-size:18px; line-height:1}
 .mobile-tabbar button.active{color:var(--accent-ink); font-weight:800}
@@ -268,9 +246,9 @@ a.cal-pill { text-decoration:none; }
 }
 @media (max-width: 760px){
   .header{ position: static; background: transparent; border-bottom: none; padding-bottom: 6px; }
-  .nav{ display:none !important; }
-  .mobile-tabbar{ display:grid; }
-  .container{ padding-bottom: 140px !important; } /* keep content clear of tabbar */
+  .nav{ display:none }             /* nav is controlled by .collapsed + Menu button */
+  .mobile-tabbar{ display:grid }   /* JS will hide on signed-out */
+  .container{ padding-bottom: 120px }
 
   .item{grid-template-columns:1fr; gap:14px}
   .item-right{justify-content:flex-start}
@@ -284,12 +262,8 @@ a.cal-pill { text-decoration:none; }
   .detail-card .item-right{ margin-top: 8px; }
   .detail-card .form-grid{ grid-template-columns: 1fr; }
   .detail-card .form-grid .span-2{ grid-column: auto; }
-
-  /* Hide tip footer on small screens so it doesn't clash with the tabbar */
-  footer{ display:none; }
 }
 @media (max-width: 420px){
   .poster{width:88px; height:132px}
   .kv{grid-template-columns:110px 1fr}
-  .card{ padding:14px; }
 }
