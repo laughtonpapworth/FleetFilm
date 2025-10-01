@@ -287,9 +287,9 @@ function routerFromHash(){
 function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
-  els.nav.classList.toggle('hidden', !on);
+  if (els.nav) els.nav.classList.toggle('hidden', !on);
 
-  // Hide/show mobile tabbar too
+  // also control the mobile tabbar (hidden by default in HTML/CSS)
   const mbar = document.getElementById('mobile-tabbar');
   if (mbar) mbar.classList.toggle('hidden', !on);
 }
@@ -325,12 +325,16 @@ function attachHandlers(){
   if(els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
   // ---- Auth buttons (force redirect; no popup) ----
-  if (els.googleBtn) {
-    els.googleBtn.addEventListener('click', async () => {
+  els.googleBtn.addEventListener('click', async () => {
+    try {
       const provider = new firebase.auth.GoogleAuthProvider();
       await auth.signInWithRedirect(provider);
-    });
-  }
+    } catch (err) {
+      console.warn('Redirect error:', err && err.message);
+      alert('Could not start Google sign-in. Try again.');
+    }
+  });
+}
 
   // Surface redirect errors after returning from Google
   if (auth && auth.getRedirectResult) {
@@ -1426,8 +1430,8 @@ async function adminAction(action, filmId){
 /* =================== Boot =================== */
 async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
-  if(!ok){
-    alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
+  if (!ok) {
+    alert('Missing Firebase config. Check js/firebase-config.js.');
     return;
   }
 
@@ -1438,11 +1442,25 @@ async function boot(){
     return;
   }
 
+  // Ensure session survives round-trip on mobile/Safari
+  try {
+    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  } catch (e) {
+    console.warn('Could not set auth persistence:', e && e.message);
+  }
+
   attachHandlers();
+
+  // Process redirect result once, then rely on onAuthStateChanged
+  try {
+    await auth.getRedirectResult();
+  } catch (err) {
+    console.warn('getRedirectResult error:', err && err.message);
+  }
 
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
-    if(!u){
+    if (!u) {
       showSignedIn(false);
       location.hash = 'submit';
       return;
