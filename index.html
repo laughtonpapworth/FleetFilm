@@ -24,8 +24,14 @@
   </div>
 
   <!-- Start collapsed; JS will show/hide this whole nav by login state -->
-  <nav id="nav" class="nav hidden"> … </nav>
-  
+<header class="header">
+  <div class="brand">
+    <img class="logo" src="img/FFLogo.png" alt="Fleet Film">
+    <div class="title">Fleet Film</div>
+  </div>
+
+  <!-- Start collapsed; JS will show/hide this whole nav by login state -->
+  <nav id="nav" class="nav hidden">
     <button id="nav-submit"    data-view="submit">Submit</button>
     <button id="nav-intake"    data-view="pending">Pending Films</button>
     <button id="nav-basic"     data-view="basic">Basic Criteria</button>
@@ -45,6 +51,7 @@
     <button id="btn-signout" class="btn btn-ghost">Sign out</button>
   </div>
 </header>
+
 
 <main class="container">
   <!-- Signed out -->
@@ -226,7 +233,7 @@
 </script>
 
 <!-- Mobile bottom tab bar (JS hides it when signed out) -->
-<nav id="mobile-tabbar" class="mobile-tabbar hidden"> … </nav>
+<nav id="mobile-tabbar" class="mobile-tabbar hidden">
   <button data-view="submit"><span class="ico">➕</span><span>Submit</span></button>
   <button data-view="pending"><span class="ico">📝</span><span>Pending</span></button>
   <button data-view="basic"><span class="ico">✅</span><span>Basic</span></button>
@@ -240,6 +247,7 @@
   <button data-view="calendar"><span class="ico">🗓️</span><span>Calendar</span></button>
   <button data-view="addresses"><span class="ico">📍</span><span>Addresses</span></button>
 </nav>
+
 
 <div id="modal-root"></div>
 </body>
