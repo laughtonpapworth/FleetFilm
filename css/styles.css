@@ -239,12 +239,20 @@ footer{
   .container{padding:0 14px 84px}
   .kv{grid-template-columns:140px 1fr}
 }
+/* Mobile rules */
 @media (max-width: 760px){
-  .header{ position: static; background: transparent; border-bottom: none; padding-bottom: 6px; }
-  .nav{ display:none }             /* nav is controlled by .collapsed + Menu button */
-  .mobile-tabbar{ display:grid }   /* JS will hide on signed-out */
-  .container{ padding-bottom: 120px }
+  /* Nav: closed by default; JS toggles .nav--open */
+  .nav{ display:none; }
+  .nav.nav--open{ display:flex; }
 
+  /* Tab bar: only shows when JS removes .hidden */
+  .mobile-tabbar:not(.hidden){ display:grid; }
+
+  /* Footer: avoid clash with tab bar */
+  footer{ display:none; }
+
+  /* Layout + components */
+  .container{ padding-bottom: 120px }
   .item{grid-template-columns:1fr; gap:14px}
   .item-right{justify-content:flex-start}
   .poster{width:96px; height:144px}
@@ -258,6 +266,4 @@ footer{
   .detail-card .form-grid{ grid-template-columns: 1fr; }
   .detail-card .form-grid .span-2{ grid-column: auto; }
 }
-@media (max-width: 760px){
-  footer{ display:none; }
-}
+
