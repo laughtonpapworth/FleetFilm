@@ -255,27 +255,13 @@ function initFirebaseOnce(){
 
 
 /* =================== Router / Views =================== */
-function setView(name){
-  // Nav active state
-  Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
-  if (els.navButtons[name]) els.navButtons[name].classList.add('active');
+function showSignedIn(on){
+  if (els.signedIn)  els.signedIn.classList.toggle('hidden', !on);
+  if (els.signedOut) els.signedOut.classList.toggle('hidden', on);
+  if (els.nav)       els.nav.classList.toggle('hidden', !on);
 
-  // Show/hide views
-  Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
-  if (els.views[name]) els.views[name].classList.remove('hidden');
-
-  // Route
-  if (name === 'pending')   return loadPending();
-  if (name === 'basic')     return loadBasic();
-  if (name === 'viewing')   return loadViewing();
-  if (name === 'vote')      return loadVote();
-  if (name === 'uk')        return loadUk();
-  if (name === 'green')     return loadGreen();
-  if (name === 'nextprog')  return loadNextProgramme();
-  if (name === 'discarded') return loadDiscarded();
-  if (name === 'archive')   return loadArchive();
-  if (name === 'calendar')  return loadCalendar();
-  if (name === 'addresses') return loadAddressesAdmin();
+  const mbar = document.getElementById('mobile-tabbar');
+  if (mbar) mbar.classList.toggle('hidden', !on);
 }
 
 function routerFromHash(){
@@ -285,14 +271,13 @@ function routerFromHash(){
 }
 
 function showSignedIn(on){
-  els.signedIn.classList.toggle('hidden', !on);
-  els.signedOut.classList.toggle('hidden', on);
-  if (els.nav) els.nav.classList.toggle('hidden', !on);
+  if (els.signedIn)  els.signedIn.classList.toggle('hidden', !on);
+  if (els.signedOut) els.signedOut.classList.toggle('hidden', on);
+  if (els.nav)       els.nav.classList.toggle('hidden', !on);
 
   const mbar = document.getElementById('mobile-tabbar');
   if (mbar) mbar.classList.toggle('hidden', !on);
 }
-
 
 // Create a user doc if missing
 async function ensureUserDoc(u){
@@ -327,17 +312,12 @@ function attachHandlers(){
   if (els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
   // Google sign-in: redirect-only (reliable on iOS/mobile)
-  if (els.googleBtn) {
-    els.googleBtn.addEventListener('click', async () => {
-      try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        await auth.signInWithRedirect(provider);
-      } catch (err) {
-        console.warn('Redirect error:', err && err.message);
-        alert('Could not start Google sign-in. Try again.');
-      }
-    });
-  }
+if (els.googleBtn) {
+  els.googleBtn.addEventListener('click', async () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithRedirect(provider);
+  });
+}
 
   if (els.emailSignInBtn) {
     els.emailSignInBtn.addEventListener('click', async () => {
@@ -1430,33 +1410,28 @@ async function adminAction(action, filmId){
 /* =================== Boot =================== */
 async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
-  if (!ok) {
-    alert('Missing Firebase config. Check js/firebase-config.js.');
-    return;
+  if (!ok) { alert('Missing Firebase config. Check js/firebase-config.js'); return; }
+
+  try { initFirebaseOnce(); } catch { alert('Missing Firebase config.'); return; }
+
+  // Persist session (iOS/Safari especially)
+  try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  } catch (e) {
+    console.warn('setPersistence failed:', e && e.message);
   }
 
+  // Handle Google redirect result right away (important on mobile)
   try {
-    initFirebaseOnce();
+    const res = await auth.getRedirectResult();
+    if (res && (res.user || res.credential)) {
+      console.log('Handled Google redirect result.');
+    }
   } catch (e) {
-    alert('Missing Firebase config. Check js/firebase-config.js.');
-    return;
-  }
-
-  // keep session after redirect (mobile/Safari)
-  try {
-    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-  } catch (e) {
-    console.warn('Could not set auth persistence:', e && e.message);
+    console.warn('Redirect sign-in error:', e && e.message);
   }
 
   attachHandlers();
-
-  // Process redirect result once (don’t duplicate elsewhere)
-  try {
-    await auth.getRedirectResult();
-  } catch (err) {
-    console.warn('getRedirectResult error:', err && err.message);
-  }
 
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
@@ -1471,4 +1446,6 @@ async function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
+
+
 
