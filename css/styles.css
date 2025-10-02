@@ -42,29 +42,19 @@ a:hover{opacity:.9}
 .brand .logo{height:36px; width:auto}
 .brand .title{font-family: Nunito, sans-serif; font-weight:800; letter-spacing:.08em; font-size:20px}
 
-/* Collapsible nav */
+
+/* Collapsible nav (visibility controlled by .hidden and .nav--open) */
 .nav{
   display:flex; gap:8px; align-items:center; flex-wrap:wrap;
   padding:6px 0; overflow-x:auto;
 }
-.nav.collapsed{ display:none; }
-@media (min-width: 980px){
-  .nav.collapsed{ display:flex; }
+
+/* Mobile: nav is closed by default; open when JS adds .nav--open */
+@media (max-width: 760px){
+  .nav{ display:none; }
+  .nav.nav--open{ display:flex; }
 }
-.nav button{
-  font-size:15px; font-weight:800; letter-spacing:.01em;
-  padding:10px 14px;
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:999px;
-  cursor:pointer; white-space:nowrap;
-}
-.nav button:hover{filter:brightness(1.02)}
-.nav button.active{
-  background:var(--accent);
-  color:#fff;
-  border-color:var(--accent);
-}
+
 
 /* Layout */
 .container{max-width:1100px; margin:16px auto; padding:0 16px 72px}
@@ -230,7 +220,8 @@ footer{
 .mobile-tabbar{
   position:fixed; bottom:0; left:0; right:0; z-index:60;
   background:#ffffff; border-top:1px solid var(--border);
-  display:grid; grid-template-columns: repeat(5, 1fr); gap:0;
+  display:none;                       /* default hidden */
+  grid-template-columns: repeat(5, 1fr); gap:0;
 }
 .mobile-tabbar button{
   appearance:none; background:#fff; border:none; padding:10px 6px;
@@ -238,6 +229,10 @@ footer{
 }
 .mobile-tabbar .ico{font-size:18px; line-height:1}
 .mobile-tabbar button.active{color:var(--accent-ink); font-weight:800}
+
+@media (max-width: 760px){
+  .mobile-tabbar:not(.hidden){ display:grid; }  /* only show when JS removes .hidden */
+}
 
 /* ===== Responsive ===== */
 @media (max-width: 980px){
@@ -263,7 +258,6 @@ footer{
   .detail-card .form-grid{ grid-template-columns: 1fr; }
   .detail-card .form-grid .span-2{ grid-column: auto; }
 }
-@media (max-width: 420px){
-  .poster{width:88px; height:132px}
-  .kv{grid-template-columns:110px 1fr}
+@media (max-width: 760px){
+  footer{ display:none; }
 }
