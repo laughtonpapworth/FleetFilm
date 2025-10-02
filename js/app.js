@@ -258,24 +258,24 @@ function initFirebaseOnce(){
 function setView(name){
   // Nav active state
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
-  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
+  if (els.navButtons[name]) els.navButtons[name].classList.add('active');
 
   // Show/hide views
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
-  if(els.views[name]) els.views[name].classList.remove('hidden');
+  if (els.views[name]) els.views[name].classList.remove('hidden');
 
   // Route
-  if(name==='pending')    return loadPending();
-  if(name==='basic')      return loadBasic();
-  if(name==='viewing')    return loadViewing();
-  if(name==='vote')       return loadVote();
-  if(name==='uk')         return loadUk();
-  if(name==='green')      return loadGreen();
-  if(name==='nextprog')   return loadNextProgramme();
-  if(name==='discarded')  return loadDiscarded();
-  if(name==='archive')    return loadArchive();
-  if(name==='calendar')   return loadCalendar();
-  if(name==='addresses')  return loadAddressesAdmin();
+  if (name === 'pending')   return loadPending();
+  if (name === 'basic')     return loadBasic();
+  if (name === 'viewing')   return loadViewing();
+  if (name === 'vote')      return loadVote();
+  if (name === 'uk')        return loadUk();
+  if (name === 'green')     return loadGreen();
+  if (name === 'nextprog')  return loadNextProgramme();
+  if (name === 'discarded') return loadDiscarded();
+  if (name === 'archive')   return loadArchive();
+  if (name === 'calendar')  return loadCalendar();
+  if (name === 'addresses') return loadAddressesAdmin();
 }
 
 function routerFromHash(){
@@ -289,10 +289,10 @@ function showSignedIn(on){
   els.signedOut.classList.toggle('hidden', on);
   if (els.nav) els.nav.classList.toggle('hidden', !on);
 
-  // also control the mobile tabbar (hidden by default in HTML/CSS)
   const mbar = document.getElementById('mobile-tabbar');
   if (mbar) mbar.classList.toggle('hidden', !on);
 }
+
 
 // Create a user doc if missing
 async function ensureUserDoc(u){
@@ -317,52 +317,52 @@ async function ensureUserDoc(u){
 }
 
 function attachHandlers(){
+  // nav clicks
   Object.values(els.navButtons).forEach(btn => {
-    if(!btn) return;
+    if (!btn) return;
     btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
   });
-  if(els.signOut) els.signOut.addEventListener('click', () => auth.signOut());
-  if(els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
-  // ---- Auth buttons (force redirect; no popup) ----
-  els.googleBtn.addEventListener('click', async () => {
-    try {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      await auth.signInWithRedirect(provider);
-    } catch (err) {
-      console.warn('Redirect error:', err && err.message);
-      alert('Could not start Google sign-in. Try again.');
-    }
-  });
-}
+  if (els.signOut) els.signOut.addEventListener('click', () => auth.signOut());
+  if (els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
 
-  // Surface redirect errors after returning from Google
-  if (auth && auth.getRedirectResult) {
-    auth.getRedirectResult().catch(err => {
-      console.warn('Redirect sign-in error:', err && err.message);
-      alert(err && err.message ? err.message : 'Sign-in failed.');
+  // Google sign-in: redirect-only (reliable on iOS/mobile)
+  if (els.googleBtn) {
+    els.googleBtn.addEventListener('click', async () => {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await auth.signInWithRedirect(provider);
+      } catch (err) {
+        console.warn('Redirect error:', err && err.message);
+        alert('Could not start Google sign-in. Try again.');
+      }
     });
   }
 
-  if(els.emailSignInBtn){
+  if (els.emailSignInBtn) {
     els.emailSignInBtn.addEventListener('click', async () => {
-      try{ await auth.signInWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
+      try {
+        await auth.signInWithEmailAndPassword(els.email.value, els.password.value);
+      } catch (e) { alert(e.message); }
     });
   }
-  if(els.emailCreateBtn){
+
+  if (els.emailCreateBtn) {
     els.emailCreateBtn.addEventListener('click', async () => {
-      try{ await auth.createUserWithEmailAndPassword(els.email.value, els.password.value); }catch(e){ alert(e.message); }
+      try {
+        await auth.createUserWithEmailAndPassword(els.email.value, els.password.value);
+      } catch (e) { alert(e.message); }
     });
   }
 
   window.addEventListener('hashchange', routerFromHash);
 
-  // mobile tabbar
+  // mobile tabbar routing
   const mbar = document.getElementById('mobile-tabbar');
-  if(mbar){
-    mbar.addEventListener('click', (e)=>{
+  if (mbar) {
+    mbar.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-view]');
-      if(!btn) return;
+      if (!btn) return;
       location.hash = btn.dataset.view;
     });
   }
@@ -1442,7 +1442,7 @@ async function boot(){
     return;
   }
 
-  // Ensure session survives round-trip on mobile/Safari
+  // keep session after redirect (mobile/Safari)
   try {
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
   } catch (e) {
@@ -1451,7 +1451,7 @@ async function boot(){
 
   attachHandlers();
 
-  // Process redirect result once, then rely on onAuthStateChanged
+  // Process redirect result once (don’t duplicate elsewhere)
   try {
     await auth.getRedirectResult();
   } catch (err) {
@@ -1471,3 +1471,4 @@ async function boot(){
   });
 }
 document.addEventListener('DOMContentLoaded', boot);
+
