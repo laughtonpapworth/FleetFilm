@@ -431,7 +431,7 @@ if (mbar) {
     });
   }
 }
-
+}
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
