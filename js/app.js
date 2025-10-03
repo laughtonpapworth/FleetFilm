@@ -289,22 +289,6 @@ function showSignedIn(on){
   if (!on) els.nav.classList.remove('nav--open');
 }
 
-
-  // Header nav & menu
-  if(els.nav){
-    els.nav.classList.toggle('hidden', !on);
-    if(!on) setNavOpen(false);
-  }
-  document.querySelector('.header-actions')?.classList.toggle('hidden', !on);
-  if(els.signOut) els.signOut.classList.toggle('hidden', !on);
-  if(els.navToggle) els.navToggle.classList.toggle('hidden', !on);
-
-  // Mobile tabbar
-  if(els.mobileTabbar){
-    els.mobileTabbar.classList.toggle('hidden', !on);
-  }
-}
-
 /* Create a user doc if missing */
 async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
@@ -368,12 +352,6 @@ if (els.googleBtn) {
     }
   });
 }
-
-// If we DID come back from a redirect, complete it (no-op otherwise)
-auth.getRedirectResult().catch(err => {
-  console.warn('Redirect sign-in error:', err && err.message);
-});
-
 
   // Optional: surface redirect errors after returning from Google
   auth.getRedirectResult().catch(err => {
