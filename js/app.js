@@ -541,78 +541,72 @@ function showPicker(items){
   });
 }
 
-async function fetchAddressesByPostcode(pc){
-  const cfg = (window.__FLEETFILM__CONFIG || {});
+async function fetchAddressesByPostcode(pc) {
+  const cfg = window.__FLEETFILM__CONFIG || {};
   const domainToken = cfg.getAddressDomainToken || '';
-  const apiKey      = cfg.getAddressIoKey || cfg.getaddressIoKey || '';
+  const apiKey = cfg.getAddressIoKey || cfg.getaddressIoKey || '';
 
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
   if (!norm) return [];
 
-  // Helper to hit getaddress and normalize results to our fields
+  // Helper to hit getaddress.io and normalize results to our fields
   const callGetAddress = async (url) => {
     const r = await fetch(url, { method: 'GET' });
     if (!r.ok) {
-      const txt = await r.text().catch(()=> '');
+      const txt = await r.text().catch(() => '');
       throw new Error(`getaddress ${r.status}: ${txt || r.statusText}`);
     }
     const data = await r.json();
-    const raw = Array.isArray(data.addresses) ? data.addresses : (data.Address || data.address || []);
-    // Normalize each to house/street/town/county/postcode/label
-    return raw.map(a => {
-      // Expanded format when ?expand=true:
-      const line1 = a.line_1 || a.building_name || a.building_number || '';
-      const number = (a.building_number || '').toString();
-      const house  = line1 || number;
-      const street = a.thoroughfare || a.line_2 || '';
-      const town   = a.town_or_city || a.post_town || a.town || '';
-      const county = a.county || a.county_name || '';
-      const postcode = (a.postcode || pc).toUpperCase();
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    
+    // Fetch full details for each suggestion using the suggestion's id
+    const addresses = await Promise.all(suggestions.map(async (s) => {
+      const detailUrl = `https://api.getaddress.io/get/${s.id}?api-key=${encodeURIComponent(apiKey)}`;
+      try {
+        const detailRes = await fetch(detailUrl);
+        if (!detailRes.ok) return null;
+        const detail = await detailRes.json();
+        return {
+          house: detail.building_name || detail.building_number || '',
+          street: detail.thoroughfare || detail.line_2 || '',
+          town: detail.town_or_city || detail.post_town || '',
+          county: detail.county || '',
+          postcode: detail.postcode || norm,
+          address: [detail.building_name || detail.building_number || '', detail.thoroughfare || detail.line_2 || ''].filter(Boolean).join(' '),
+          label: s.address // Use the suggestion's address as the display label
+        };
+      } catch (e) {
+        console.warn(`[getaddress] Failed to fetch details for id ${s.id}:`, e.message);
+        return null;
+      }
+    }));
 
-      const labelParts = [
-        house,
-        street,
-        town,
-        county,
-        postcode
-      ].filter(Boolean);
-
-      return {
-        house: house || '',
-        street: street || '',
-        town: town || '',
-        county: county || '',
-        postcode,
-        address: [house, street].filter(Boolean).join(' '),
-        label: labelParts.join(', ')
-      };
-    });
+    return addresses.filter(a => a !== null); // Filter out any failed detail fetches
   };
 
   // 1) Try Domain Token (browser-safe)
   if (domainToken) {
     try {
-      // Note: /find/{postcode} with ?expand=true
-      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&domain_token=${encodeURIComponent(domainToken)}`;
+      const url = `https://api.getaddress.io/autocomplete/${encodeURIComponent(norm)}?all=true&domain_token=${encodeURIComponent(domainToken)}`;
       const list = await callGetAddress(url);
       if (list.length) return list;
     } catch (e) {
-      console.warn('[getaddress] domain token path failed:', e?.message);
+      console.warn('[getaddress] domain token path failed:', e.message);
     }
   }
 
-  // 2) Fallback to API key (works even if domain token is blocked)
+  // 2) Fallback to API key
   if (apiKey) {
     try {
-      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(apiKey)}`;
+      const url = `https://api.getaddress.io/autocomplete/${encodeURIComponent(norm)}?all=true&api-key=${encodeURIComponent(apiKey)}`;
       const list = await callGetAddress(url);
       if (list.length) return list;
     } catch (e) {
-      console.warn('[getaddress] api key path failed:', e?.message);
+      console.warn('[getaddress] api key path failed:', e.message);
     }
   }
 
-  // 3) Last resort: postcodes.io (gives town/county only — no property list)
+  // 3) Last resort: postcodes.io (town/county only, no address list)
   try {
     const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
     if (r.ok) {
@@ -630,14 +624,12 @@ async function fetchAddressesByPostcode(pc){
         }];
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[postcodes.io] lookup failed:', e.message);
+  }
 
   return [];
 }
-
-
-
-
 
 /* =================== Submit (Title+Year; manual ok) =================== */
 async function submitFilm(){
