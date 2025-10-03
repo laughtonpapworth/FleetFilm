@@ -543,59 +543,281 @@ function showPicker(items){
 
 async function fetchAddressesByPostcode(pc) {
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
-  if (!norm) return [];
+  if (!norm) {
+    console.warn('[postcodes.io] Empty or invalid postcode');
+    return [];
+  }
+  console.log('[postcodes.io] Attempting lookup for:', norm);
 
-  console.log('[postcodes.io] Attempting lookup for:', norm); // Debug log
-
+  // Try autocomplete endpoint first for address list
   try {
-    const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
-    console.log('[postcodes.io] Fetching:', url); // Debug log
+    const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}/autocomplete`;
+    console.log('[postcodes.io] Fetching autocomplete:', url);
     const r = await fetch(url);
     if (!r.ok) {
       const txt = await r.text().catch(() => '');
-      console.error(`[postcodes.io] Failed: ${r.status} ${txt || r.statusText}`);
+      console.error(`[postcodes.io] Autocomplete failed: ${r.status} ${txt || r.statusText}`);
+      throw new Error('Autocomplete failed');
+    }
+    const data = await r.json();
+    console.log('[postcodes.io] Autocomplete response:', data);
+
+    if (data.status !== 200 || !data.result || !Array.isArray(data.result)) {
+      console.warn('[postcodes.io] No addresses in autocomplete response');
+    } else {
+      // Parse autocomplete results (array of address strings)
+      const addresses = data.result.map(addrLine => {
+        // Split address: e.g., "1 Connaught Road, Fleet, Hampshire, GU51 3RA"
+        const parts = addrLine.split(', ').map(p => p.trim());
+        const house = parts[0] || ''; // e.g., "1 Connaught Road" or "Flat 1"
+        const street = parts[1] || parts[0] || ''; // Fallback to first part if no street
+        const town = parts[2] || '';
+        const county = parts[3] || '';
+        const postcode = norm;
+
+        // Extract house number/name from first part (e.g., "1" from "1 Connaught Road")
+        const houseMatch = house.match(/^\d+\w?\b/); // Matches "1", "1A", etc.
+        const houseNum = houseMatch ? houseMatch[0] : house;
+        const streetName = houseMatch ? house.replace(houseMatch[0], '').trim() : house;
+
+        return {
+          house: houseNum,
+          street: streetName || street,
+          town: town,
+          county: county,
+          postcode: postcode,
+          address: [houseNum, streetName].filter(Boolean).join(' '),
+          label: addrLine
+        };
+      });
+
+      console.log('[postcodes.io] Normalized addresses:', addresses);
+      if (addresses.length > 0) return addresses;
+    }
+  } catch (e) {
+    console.error('[postcodes.io] Autocomplete error:', e.message);
+  }
+
+  // Fallback to single postcode lookup for town/county
+  try {
+    const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
+    console.log('[postcodes.io] Fetching single postcode:', url);
+    const r = await fetch(url);
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      console.error(`[postcodes.io] Single postcode failed: ${r.status} ${txt || r.statusText}`);
       return [];
     }
     const data = await r.json();
-    console.log('[postcodes.io] Response:', data); // Debug log
+    console.log('[postcodes.io] Single postcode response:', data);
 
-    if (data.status !== 200 || !data.result) {
-      console.warn('[postcodes.io] Invalid postcode or no data');
-      return [];
-    }
-
-    const res = data.result;
-    const addresses = res.addresses || []; // Array of full address lines, e.g., ["1 Connaught Road", "2 Connaught Road"]
-
-    // Normalize each address to your app's format
-    const addressList = addresses.map(addrLine => {
-      // Parse address line: e.g., "1 Connaught Road" -> house="1", street="Connaught Road"
-      const parts = addrLine.trim().split(' ', 2); // Split on first two spaces max
-      const house = parts[0] || '';
-      const street = parts.slice(1).join(' ') || '';
-
-      const town = res.admin_district || res.parish || '';
-      const county = res.region || res.county || ''; // Use region as county fallback
-
-      const labelParts = [house, street, town, county, norm].filter(Boolean);
-      return {
-        house: house,
-        street: street,
+    if (data.status === 200 && data.result) {
+      const res = data.result;
+      const town = res.admin_district || res.parish || res.region || '';
+      const county = res.region || res.county || '';
+      const addressObj = {
+        house: '',
+        street: '',
         town: town,
         county: county,
         postcode: norm,
-        address: [house, street].filter(Boolean).join(' '),
-        label: labelParts.join(', ')
+        address: '',
+        label: `${norm} (${town || county || 'UK'})`
       };
-    });
-
-    console.log('[postcodes.io] Normalized addresses:', addressList); // Debug log
-    return addressList;
-
+      console.log('[postcodes.io] Fallback address:', addressObj);
+      return [addressObj];
+    }
   } catch (e) {
-    console.error('[postcodes.io] Lookup error:', e.message);
-    return [];
+    console.error('[postcodes.io] Single postcode lookup error:', e.message);
   }
+
+  console.warn('[postcodes.io] No addresses or fallback data available');
+  return [];
+}
+
+function showAddLocationModal(prefill = {}) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-head">
+          <h2>${prefill.id ? 'Edit location' : 'Add new location'}</h2>
+          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
+        </div>
+
+        <div class="form-grid">
+          <label class="span-2">Location Name (required)
+            <input id="loc-name" type="text" placeholder="e.g. Church Hall"
+                   value="${prefill.name || ''}" required>
+          </label>
+
+          <label>Postcode
+            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3RA"
+                   value="${prefill.postcode || ''}">
+          </label>
+          <div class="actions">
+            <button class="btn" id="loc-lookup">Lookup</button>
+          </div>
+
+          <!-- Address suggestions render here -->
+          <div class="span-2" id="loc-options"></div>
+
+          <label>House / Name
+            <input id="loc-house" type="text" value="${prefill.house || ''}">
+          </label>
+          <label>Street
+            <input id="loc-street" type="text" value="${prefill.street || prefill.address || ''}">
+          </label>
+          <label>Town / City
+            <input id="loc-town" type="text" value="${prefill.town || prefill.city || ''}">
+          </label>
+          <label>County
+            <input id="loc-county" type="text" value="${prefill.county || ''}">
+          </label>
+
+          <div id="loc-msg" class="notice hidden span-2"></div>
+
+          <div class="actions span-2">
+            <div class="spacer"></div>
+            <button class="btn btn-primary" id="loc-save">
+              ${prefill.id ? 'Save changes' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const $ = sel => overlay.querySelector(sel);
+    const close = (res) => { document.body.removeChild(overlay); resolve(res || null); };
+
+    $('#loc-cancel').onclick = () => close(null);
+
+    // Lookup click: fetch + render suggestions
+    $('#loc-lookup').onclick = async () => {
+      const pc = ($('#loc-postcode').value || '').trim();
+      if (!pc) { toast('Enter a postcode first'); return; }
+
+      const listEl = $('#loc-options');
+      listEl.innerHTML = '<div class="notice">Searching…</div>';
+
+      try {
+        const results = await fetchAddressesByPostcode(pc);
+        console.log('[showAddLocationModal] Lookup results:', results); // Debug
+        listEl.innerHTML = '';
+
+        if (!results.length) {
+          listEl.innerHTML = '<div class="notice">No addresses found for that postcode. Enter details manually.</div>';
+          return;
+        }
+
+        // Store results for click handlers
+        const addressMap = new Map();
+        results.forEach((a, index) => {
+          addressMap.set(`addr-${index}`, a);
+        });
+
+        // Render buttons with unique data-addr-id
+        results.forEach((a, index) => {
+          console.log('[showAddLocationModal] Rendering address:', a.label); // Debug
+          const b = document.createElement('button');
+          b.className = 'btn btn-ghost';
+          b.type = 'button';
+          b.style.width = '100%';
+          b.style.textAlign = 'left';
+          b.textContent = a.label;
+          b.dataset.addrId = `addr-${index}`; // Unique ID for this address
+          listEl.appendChild(b);
+        });
+
+        // Event delegation for address buttons
+        listEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-addr-id]');
+          if (!btn) return;
+          const addrId = btn.dataset.addrId;
+          const address = addressMap.get(addrId);
+
+          console.log('[showAddLocationModal] Address clicked:', address); // Debug
+
+          if (!address) {
+            console.error('[showAddLocationModal] Address not found for ID:', addrId);
+            toast('Error: Address data not found');
+            return;
+          }
+
+          try {
+            const inputs = {
+              house: $('#loc-house'),
+              street: $('#loc-street'),
+              town: $('#loc-town'),
+              county: $('#loc-county'),
+              postcode: $('#loc-postcode')
+            };
+
+            if (!inputs.house || !inputs.street || !inputs.town || !inputs.county || !inputs.postcode) {
+              console.error('[showAddLocationModal] Missing input elements:', inputs);
+              toast('Error: Form fields not found');
+              return;
+            }
+
+            inputs.house.value = address.house || '';
+            inputs.street.value = address.street || '';
+            inputs.town.value = address.town || '';
+            inputs.county.value = address.county || '';
+            inputs.postcode.value = address.postcode || pc.toUpperCase();
+            console.log('[showAddLocationModal] Fields populated:', address); // Debug
+          } catch (e) {
+            console.error('[showAddLocationModal] Error setting fields:', e.message);
+            toast('Error setting address fields');
+          }
+        });
+      } catch (e) {
+        console.error('[showAddLocationModal] Lookup error:', e.message);
+        listEl.innerHTML = '<div class="notice">Lookup failed. Try another postcode or enter manually.</div>';
+      }
+    };
+
+    // Save
+    $('#loc-save').onclick = async () => {
+      const name     = ($('#loc-name').value || '').trim();
+      const house    = ($('#loc-house').value || '').trim();
+      const street   = ($('#loc-street').value || '').trim();
+      const town     = ($('#loc-town').value || '').trim();
+      const county   = ($('#loc-county').value || '').trim();
+      const postcode = ($('#loc-postcode').value || '').trim().toUpperCase();
+
+      if (!name) { toast('Location Name is required.'); return; }
+
+      // Keep combined line for legacy UI; also store structured fields
+      const addressCombined = [house, street].filter(Boolean).join(' ').trim();
+
+      try {
+        if (prefill.id) {
+          await db.collection('locations').doc(prefill.id).update({
+            name, address: addressCombined, postcode, city: town,
+            house, street, town, county
+          });
+          close({ id: prefill.id, name });
+        } else {
+          const ref = await db.collection('locations').add({
+            name, address: addressCombined, postcode, city: town,
+            house, street, town, county,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          close({ id: ref.id, name });
+        }
+      } catch (e) {
+        toast(e.message || 'Could not save');
+      }
+    };
+
+    function toast(msg) {
+      const m = $('#loc-msg');
+      m.textContent = msg;
+      m.classList.remove('hidden');
+      setTimeout(() => m.classList.add('hidden'), 1800);
+    }
+  });
 }
 
 /* =================== Submit (Title+Year; manual ok) =================== */
@@ -943,176 +1165,6 @@ async function loadViewing(){
       }
       await adminAction(act, id);
     });
-  });
-}
-
-function showAddLocationModal(prefill = {}) {
-  return new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal">
-        <div class="modal-head">
-          <h2>${prefill.id ? 'Edit location' : 'Add new location'}</h2>
-          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
-        </div>
-
-        <div class="form-grid">
-          <label class="span-2">Location Name (required)
-            <input id="loc-name" type="text" placeholder="e.g. Church Hall"
-                   value="${prefill.name || ''}" required>
-          </label>
-
-          <label>Postcode
-            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3RA"
-                   value="${prefill.postcode || ''}">
-          </label>
-          <div class="actions">
-            <button class="btn" id="loc-lookup">Lookup</button>
-          </div>
-
-          <!-- Address suggestions render here -->
-          <div class="span-2" id="loc-options"></div>
-
-          <label>House / Name
-            <input id="loc-house" type="text" value="${prefill.house || ''}">
-          </label>
-          <label>Street
-            <input id="loc-street" type="text" value="${prefill.street || prefill.address || ''}">
-          </label>
-          <label>Town / City
-            <input id="loc-town" type="text" value="${prefill.town || prefill.city || ''}">
-          </label>
-          <label>County
-            <input id="loc-county" type="text" value="${prefill.county || ''}">
-          </label>
-
-          <div id="loc-msg" class="notice hidden span-2"></div>
-
-          <div class="actions span-2">
-            <div class="spacer"></div>
-            <button class="btn btn-primary" id="loc-save">
-              ${prefill.id ? 'Save changes' : 'Save'}
-            </button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    const $ = sel => overlay.querySelector(sel);
-    const close = (res) => { document.body.removeChild(overlay); resolve(res || null); };
-
-    $('#loc-cancel').onclick = () => close(null);
-
-    // Lookup click: fetch + render suggestions
-    $('#loc-lookup').onclick = async () => {
-      const pc = ($('#loc-postcode').value || '').trim();
-      if (!pc) { toast('Enter a postcode first'); return; }
-
-      const listEl = $('#loc-options');
-      listEl.innerHTML = '<div class="notice">Searching…</div>';
-
-      try {
-        const results = await fetchAddressesByPostcode(pc);
-        listEl.innerHTML = '';
-
-        if (!results.length) {
-          listEl.innerHTML = '<div class="notice">No addresses found for that postcode.</div>';
-          return;
-        }
-
-        // Render each address as a full-width button
-        results.forEach(a => {
-          console.log('Address data:', a); // Debug: log each address object
-          const b = document.createElement('button');
-          b.className = 'btn btn-ghost';
-          b.type = 'button';
-          b.style.width = '100%';
-          b.style.textAlign = 'left';
-          b.textContent = a.label;
-
-          // Attach click handler
-          b.addEventListener('click', () => {
-            try {
-              console.log('Button clicked:', a.label); // Debug: confirm click
-              const houseInput = $('#loc-house');
-              const streetInput = $('#loc-street');
-              const townInput = $('#loc-town');
-              const countyInput = $('#loc-county');
-              const postcodeInput = $('#loc-postcode');
-
-              if (!houseInput || !streetInput || !townInput || !countyInput || !postcodeInput) {
-                console.error('One or more input elements not found:', {
-                  house: !!houseInput,
-                  street: !!streetInput,
-                  town: !!townInput,
-                  county: !!countyInput,
-                  postcode: !!postcodeInput
-                });
-                toast('Error: Could not find form fields');
-                return;
-              }
-
-              houseInput.value = a.house || '';
-              streetInput.value = a.street || '';
-              townInput.value = a.town || '';
-              countyInput.value = a.county || '';
-              postcodeInput.value = a.postcode || pc.toUpperCase();
-            } catch (e) {
-              console.error('Error setting address fields:', e.message);
-              toast('Error setting address fields');
-            }
-          });
-
-          listEl.appendChild(b);
-        });
-
-      } catch (e) {
-        console.warn('[getaddress] lookup error:', e?.message);
-        listEl.innerHTML = '<div class="notice">Lookup failed (network, token, or CORS).</div>';
-      }
-    };
-
-    // Save
-    $('#loc-save').onclick = async () => {
-      const name     = ($('#loc-name').value || '').trim();
-      const house    = ($('#loc-house').value || '').trim();
-      const street   = ($('#loc-street').value || '').trim();
-      const town     = ($('#loc-town').value || '').trim();
-      const county   = ($('#loc-county').value || '').trim();
-      const postcode = ($('#loc-postcode').value || '').trim().toUpperCase();
-
-      if (!name) { toast('Location Name is required.'); return; }
-
-      // Keep combined line for legacy UI; also store structured fields
-      const addressCombined = [house, street].filter(Boolean).join(' ').trim();
-
-      try {
-        if (prefill.id) {
-          await db.collection('locations').doc(prefill.id).update({
-            name, address: addressCombined, postcode, city: town,
-            house, street, town, county
-          });
-          close({ id: prefill.id, name });
-        } else {
-          const ref = await db.collection('locations').add({
-            name, address: addressCombined, postcode, city: town,
-            house, street, town, county,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          close({ id: ref.id, name });
-        }
-      } catch (e) {
-        toast(e.message || 'Could not save');
-      }
-    };
-
-    function toast(msg) {
-      const m = $('#loc-msg');
-      m.textContent = msg;
-      m.classList.remove('hidden');
-      setTimeout(() => m.classList.add('hidden'), 1800);
-    }
   });
 }
 
