@@ -26,6 +26,7 @@ const els = {
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
   addressesList: document.getElementById('addresses-list'),
+
   addressesTable: document.querySelector('#addresses-table tbody'),
   addressesAdminMsg: document.getElementById('addresses-admin-msg'),
 
@@ -89,8 +90,8 @@ const REQUIRED_BASIC_FIELDS = [
 /* =================== Calendar (Monday-first) =================== */
 let calOffset = 0; // months from "now" (0=current, -1=prev, +1=next)
 
-function mondayIndex(jsDay) { return (jsDay + 6) % 7; } // JS: Sun=0..Sat=6 -> Mon=0..Sun=6
-function monthLabel(year, month) {
+function mondayIndex(jsDay){ return (jsDay + 6) % 7; } // JS: Sun=0..Sat=6 -> Mon=0..Sun=6
+function monthLabel(year, month){
   return new Date(year, month, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
 }
 
@@ -98,17 +99,17 @@ function monthLabel(year, month) {
 function buildCalendarGridHTML(year, month, eventsByISO) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDow = mondayIndex(new Date(year, month, 1).getDay()); // 0..6 where 0=Mon
-  const headers = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const headers = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
     .map(w => `<div class="cal-wd">${w}</div>`).join('');
 
   let cells = '';
   for (let i = 0; i < firstDow; i++) cells += '<div class="cal-cell empty"></div>';
 
   for (let d = 1; d <= daysInMonth; d++) {
-    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(({ text, id }, i) =>
-      `<button class="cal-pill c${i % 4}" data-film-id="${id}" style="display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
+    const pills = items.map(({text, id}, i) =>
+      `<button class="cal-pill c${i%4}" data-film-id="${id}" style="display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
     ).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
@@ -116,21 +117,21 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
 }
 
 /** Render the calendar (title + grid) into the Calendar page. */
-async function refreshCalendarOnly() {
+async function refreshCalendarOnly(){
   const titleEl = document.getElementById('cal-title');
-  const gridEl = document.getElementById('cal-grid');
-  if (!titleEl || !gridEl) return;
+  const gridEl  = document.getElementById('cal-grid');
+  if(!titleEl || !gridEl) return;
 
   // Get all scheduled films (any status) with a viewingDate
-  const snap = await db.collection('films').where('viewingDate', '!=', null).get();
-  const events = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .filter(f => f.viewingDate && typeof f.viewingDate.toDate === 'function');
+  const snap = await db.collection('films').where('viewingDate','!=', null).get();
+  const events = snap.docs.map(d=>({ id:d.id, ...d.data() }))
+    .filter(f=>f.viewingDate && typeof f.viewingDate.toDate === 'function');
 
   // Group by YYYY-MM-DD
   const byISO = {};
-  events.forEach(ev => {
+  events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const locName = ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : '';
     const time = ev.viewingTime ? ` ${ev.viewingTime}` : '';
     const label = `${ev.title}${time}${locName}`;
@@ -138,16 +139,16 @@ async function refreshCalendarOnly() {
   });
 
   const now = new Date();
-  const ref = new Date(now.getFullYear(), now.getMonth() + calOffset, 1);
+  const ref = new Date(now.getFullYear(), now.getMonth()+calOffset, 1);
   titleEl.textContent = monthLabel(ref.getFullYear(), ref.getMonth());
   gridEl.innerHTML = buildCalendarGridHTML(ref.getFullYear(), ref.getMonth(), byISO);
 
   // Wire pill clicks -> quick actions modal
-  gridEl.querySelectorAll('.cal-pill').forEach(p => {
-    p.addEventListener('click', async () => {
+  gridEl.querySelectorAll('.cal-pill').forEach(p=>{
+    p.addEventListener('click', async ()=>{
       const filmId = p.getAttribute('data-film-id');
       const doc = await db.collection('films').doc(filmId).get();
-      if (!doc.exists) return;
+      if(!doc.exists) return;
       const f = { id: doc.id, ...doc.data() };
       openCalendarQuickActions(f);
     });
@@ -155,7 +156,7 @@ async function refreshCalendarOnly() {
 }
 
 /* Small modal for calendar quick actions */
-function openCalendarQuickActions(film) {
+function openCalendarQuickActions(film){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
@@ -173,26 +174,26 @@ function openCalendarQuickActions(film) {
     </div>`;
   document.body.appendChild(overlay);
 
-  function close() { document.body.removeChild(overlay); }
+  function close(){ document.body.removeChild(overlay); }
 
   overlay.querySelector('#calqa-close').onclick = close;
 
-  overlay.querySelector('#calqa-edit').onclick = async () => {
+  overlay.querySelector('#calqa-edit').onclick = async ()=>{
     close();
     await prefillCalendarEditor(film.id);
     document.getElementById('calendar-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  overlay.querySelector('#calqa-details').onclick = () => {
+  overlay.querySelector('#calqa-details').onclick = ()=>{
     close();
     location.hash = 'viewing';
-    setTimeout(() => {
-      document.querySelector(`[data-film-card="${film.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(()=>{
+      document.querySelector(`[data-film-card="${film.id}"]`)?.scrollIntoView({behavior:'smooth', block:'start'});
     }, 250);
   };
 
-  overlay.querySelector('#calqa-delete').onclick = async () => {
-    if (!confirm('Remove this film from the calendar?')) return;
+  overlay.querySelector('#calqa-delete').onclick = async ()=>{
+    if(!confirm('Remove this film from the calendar?')) return;
     await db.collection('films').doc(film.id).update({
       viewingDate: null,
       viewingTime: '',
@@ -205,15 +206,15 @@ function openCalendarQuickActions(film) {
 }
 
 /* =================== Firebase =================== */
-function haveFirebaseSDK() {
+function haveFirebaseSDK(){
   try { return !!window.firebase; } catch { return false; }
 }
 
-function getFirebaseConfig() {
+function getFirebaseConfig(){
   return window.__FLEETFILM__CONFIG || window.firebaseConfig || window.FIREBASE_CONFIG || null;
 }
 
-async function waitForFirebaseAndConfig(timeoutMs = 10000) {
+async function waitForFirebaseAndConfig(timeoutMs = 10000){
   const start = Date.now();
   while (!haveFirebaseSDK()) {
     if (Date.now() - start > timeoutMs) return false;
@@ -227,55 +228,55 @@ async function waitForFirebaseAndConfig(timeoutMs = 10000) {
   }
 }
 
-function initFirebaseOnce() {
+function initFirebaseOnce(){
   if (firebase.apps && firebase.apps.length > 0) {
-    app = firebase.app();
+    app  = firebase.app();
     auth = firebase.auth();
-    db = firebase.firestore();
+    db   = firebase.firestore();
     return;
   }
   const cfg = getFirebaseConfig();
   if (!cfg || !cfg.apiKey) throw new Error('Missing Firebase config');
-  app = firebase.initializeApp(cfg);
+  app  = firebase.initializeApp(cfg);
   auth = firebase.auth();
-  db = firebase.firestore();
+  db   = firebase.firestore();
   auth.useDeviceLanguage?.();
 }
 
 /* =================== Router / Views =================== */
-function setView(name) {
+function setView(name){
   Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
-  if (els.navButtons[name]) els.navButtons[name].classList.add('active');
+  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
 
   Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
-  if (els.views[name]) els.views[name].classList.remove('hidden');
+  if(els.views[name]) els.views[name].classList.remove('hidden');
 
-  if (name === 'pending') return loadPending();
-  if (name === 'basic') return loadBasic();
-  if (name === 'viewing') return loadViewing();
-  if (name === 'vote') return loadVote();
-  if (name === 'uk') return loadUk();
-  if (name === 'green') return loadGreen();
-  if (name === 'nextprog') return loadNextProgramme();
-  if (name === 'discarded') return loadDiscarded();
-  if (name === 'archive') return loadArchive();
-  if (name === 'calendar') return loadCalendar();
-  if (name === 'addresses') return loadAddressesAdmin();
+  if(name==='pending')    return loadPending();
+  if(name==='basic')      return loadBasic();
+  if(name==='viewing')    return loadViewing();
+  if(name==='vote')       return loadVote();
+  if(name==='uk')         return loadUk();
+  if(name==='green')      return loadGreen();
+  if(name==='nextprog')   return loadNextProgramme();
+  if(name==='discarded')  return loadDiscarded();
+  if(name==='archive')    return loadArchive();
+  if(name==='calendar')   return loadCalendar();
+  if(name==='addresses')  return loadAddressesAdmin();
 }
 
-function routerFromHash() {
-  const h = (location.hash.replace('#', '') || 'submit');
-  const map = { intake: 'pending', approved: 'green' };
+function routerFromHash(){
+  const h = (location.hash.replace('#','') || 'submit');
+  const map = { intake:'pending', approved:'green' };
   setView(map[h] || h);
 }
 
-function setNavOpen(open) {
-  if (!els.nav) return;
-  if (open) els.nav.classList.add('nav--open');
+function setNavOpen(open){
+  if(!els.nav) return;
+  if(open) els.nav.classList.add('nav--open');
   else els.nav.classList.remove('nav--open');
 }
 
-function showSignedIn(on) {
+function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
   els.nav.classList.toggle('hidden', !on);
@@ -289,10 +290,10 @@ function showSignedIn(on) {
 }
 
 /* Create a user doc if missing */
-async function ensureUserDoc(u) {
+async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
   const snap = await ref.get();
-  if (!snap.exists) {
+  if(!snap.exists){
     await ref.set({
       email: u.email || '',
       displayName: u.displayName || u.email || 'User',
@@ -305,23 +306,23 @@ async function ensureUserDoc(u) {
   state.role = role;
 
   // Admin-only nav button visibility
-  if (els.navButtons.addresses) {
-    els.navButtons.addresses.classList.toggle('hidden', role !== 'admin');
+  if(els.navButtons.addresses){
+    els.navButtons.addresses.classList.toggle('hidden', role!=='admin');
   }
 }
 
-function attachHandlers() {
+function attachHandlers(){
   // Header Menu (mobile)
-  if (els.navToggle) {
-    els.navToggle.addEventListener('click', () => {
-      if (els.nav?.classList.contains('nav--open')) setNavOpen(false);
+  if(els.navToggle){
+    els.navToggle.addEventListener('click', ()=>{
+      if(els.nav?.classList.contains('nav--open')) setNavOpen(false);
       else setNavOpen(true);
     });
   }
 
   // Top nav routing
   Object.values(els.navButtons).forEach(btn => {
-    if (!btn) return;
+    if(!btn) return;
     btn.addEventListener('click', () => {
       setNavOpen(false);
       location.hash = btn.dataset.view;
@@ -329,12 +330,12 @@ function attachHandlers() {
   });
 
   // Sign out
-  if (els.signOut) {
+  if(els.signOut){
     els.signOut.addEventListener('click', () => auth.signOut());
   }
 
   // Submit button
-  if (els.submitBtn) {
+  if(els.submitBtn){
     els.submitBtn.addEventListener('click', submitFilm);
   }
 
@@ -359,18 +360,18 @@ function attachHandlers() {
   });
 
   // Email auth
-  if (els.emailSignInBtn) {
+  if(els.emailSignInBtn){
     els.emailSignInBtn.addEventListener('click', async () => {
       try {
         await auth.signInWithEmailAndPassword(els.email.value, els.password.value);
-      } catch (e) { alert(e.message); }
+      } catch(e) { alert(e.message); }
     });
   }
-  if (els.emailCreateBtn) {
+  if(els.emailCreateBtn){
     els.emailCreateBtn.addEventListener('click', async () => {
       try {
         await auth.createUserWithEmailAndPassword(els.email.value, els.password.value);
-      } catch (e) { alert(e.message); }
+      } catch(e) { alert(e.message); }
     });
   }
 
@@ -380,9 +381,9 @@ function attachHandlers() {
   // Mobile bottom tabbar
   const mbar = document.getElementById('mobile-tabbar');
   if (mbar) {
-    mbar.addEventListener('click', (e) => {
+    mbar.addEventListener('click', (e)=>{
       const btn = e.target.closest('button[data-view]');
-      if (!btn) return;
+      if(!btn) return;
       location.hash = btn.dataset.view;
     });
 
@@ -391,13 +392,13 @@ function attachHandlers() {
       moreBtn.addEventListener('click', () => {
         // Build the "More" list = everything except the 4 quick ones
         const rest = [
-          ['pending', 'Pending'],
-          ['basic', 'Basic'],
-          ['uk', 'UK Check'],
-          ['green', 'Green'],
-          ['nextprog', 'Next Programme'],
+          ['pending',   'Pending'],
+          ['basic',     'Basic'],
+          ['uk',        'UK Check'],
+          ['green',     'Green'],
+          ['nextprog',  'Next Programme'],
           ['discarded', 'Discarded'],
-          ['archive', 'Archive'],
+          ['archive',   'Archive'],
           ['addresses', 'Addresses'],
         ];
         const overlay = document.createElement('div');
@@ -413,12 +414,12 @@ function attachHandlers() {
         document.body.appendChild(overlay);
 
         const list = overlay.querySelector('#more-list');
-        rest.forEach(([view, label]) => {
+        rest.forEach(([view, label])=>{
           const b = document.createElement('button');
           b.className = 'btn';
           b.textContent = label;
           b.onclick = () => {
-            location.hash = view; // navigate
+            location.hash = view;           // navigate
             document.body.removeChild(overlay); // auto-hide
           };
           list.appendChild(b);
@@ -433,236 +434,223 @@ function attachHandlers() {
 }
 
 /* =================== Filters (Pending) =================== */
-const filterState = { q: '', status: '' };
+const filterState = { q:'', status:'' };
 
-function setupPendingFilters() {
+function setupPendingFilters(){
   const q = document.getElementById('filter-q');
   const s = document.getElementById('filter-status');
   const clr = document.getElementById('filter-clear');
-  if (q) { q.addEventListener('input', () => { filterState.q = q.value.trim().toLowerCase(); loadPending(); }); }
-  if (s) { s.addEventListener('change', () => { filterState.status = s.value; loadPending(); }); }
-  if (clr) { clr.addEventListener('click', () => { filterState.q = ''; filterState.status = ''; if (q) q.value = ''; if (s) s.value = ''; loadPending(); }); }
+  if(q){ q.addEventListener('input', ()=>{ filterState.q = q.value.trim().toLowerCase(); loadPending(); }); }
+  if(s){ s.addEventListener('change', ()=>{ filterState.status = s.value; loadPending(); }); }
+  if(clr){ clr.addEventListener('click', ()=>{ filterState.q=''; filterState.status=''; if(q) q.value=''; if(s) s.value=''; loadPending(); }); }
 }
 
 /* =================== OMDb helpers =================== */
-function getOmdbKey() {
+function getOmdbKey(){
   return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.omdbApiKey) || '';
 }
 
-async function omdbSearch(title, year) {
+async function omdbSearch(title, year){
   const key = getOmdbKey();
-  if (!key) return { Search: [] };
+  if(!key) return { Search: [] };
   const params = new URLSearchParams({ apikey: key, s: title, type: 'movie' });
-  if (year) params.set('y', String(year));
+  if(year) params.set('y', String(year));
   const url = 'https://www.omdbapi.com/?' + params.toString();
   const r = await fetch(url);
-  if (!r.ok) return { Search: [] };
+  if(!r.ok) return { Search: [] };
   const data = await r.json();
   return data || { Search: [] };
 }
 
-async function omdbDetailsById(imdbID) {
+async function omdbDetailsById(imdbID){
   const key = getOmdbKey();
-  if (!key) return null;
+  if(!key) return null;
   const params = new URLSearchParams({ apikey: key, i: imdbID, plot: 'short' });
   const url = 'https://www.omdbapi.com/?' + params.toString();
   const r = await fetch(url);
-  if (!r.ok) return null;
+  if(!r.ok) return null;
   const data = await r.json();
   return (data && data.Response === 'True') ? data : null;
 }
 
-function mapMpaaToUk(mpaa) {
-  if (!mpaa) return '';
+function mapMpaaToUk(mpaa){
+  if(!mpaa) return '';
   const s = String(mpaa).toUpperCase();
-  if (s === 'G') return 'U';
-  if (s === 'PG') return 'PG';
-  if (s === 'PG-13') return '12A';
-  if (s === 'R') return '15';
-  if (s === 'NC-17') return '18';
-  if (s.includes('NOT RATED') || s === 'N/A') return 'NR';
+  if(s === 'G') return 'U';
+  if(s === 'PG') return 'PG';
+  if(s === 'PG-13') return '12A';
+  if(s === 'R') return '15';
+  if(s === 'NC-17') return '18';
+  if(s.includes('NOT RATED') || s === 'N/A') return 'NR';
   return s;
 }
 
 /* =================== Picker (OMDb) =================== */
-function showPicker(items) {
-  return new Promise(resolve => {
+function showPicker(items){
+  return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     const modal = document.createElement('div');
     modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-head">
-        <h2>Select the correct film</h2>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button id="ff-picker-manual" class="btn btn-ghost">Add manually</button>
-          <button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>
-        </div>
-      </div>
-      <div id="ff-picker-list" class="modal-list"></div>`;
+    modal.innerHTML =
+      '<div class="modal-head">' +
+        '<h2>Select the correct film</h2>' +
+        '<div style="display:flex; gap:8px; align-items:center;">' +
+          '<button id="ff-picker-manual" class="btn btn-ghost">Add manually</button>' +
+          '<button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="ff-picker-list" class="modal-list"></div>';
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
     const list = modal.querySelector('#ff-picker-list');
-    if (!items || !items.length) {
+    if(!items || !items.length){
       list.innerHTML = '<div class="notice">No matches found. You can “Add manually”.</div>';
-    } else {
-      items.forEach(it => {
-        const poster = (it.Poster && it.Poster !== 'N/A') ? it.Poster : '';
+    }else{
+      items.forEach(it=>{
+        const poster = (it.Poster && it.Poster!=='N/A') ? it.Poster : '';
         const row = document.createElement('div');
         row.className = 'modal-row';
-        row.innerHTML = `
-          ${poster ? `<img src="${poster}" alt="poster" class="poster-small">` : ''}
-          <div class="modal-row-main">
-            <div class="modal-row-title">${it.Title} (${it.Year})</div>
-            <div class="modal-row-sub">${it.Type || 'movie'} • ${it.imdbID}</div>
-          </div>
-          <button data-id="${it.imdbID}" class="btn btn-primary">Select</button>`;
+        row.innerHTML =
+          (poster ? '<img src="'+poster+'" alt="poster" class="poster-small">' : '') +
+          '<div class="modal-row-main">' +
+            '<div class="modal-row-title">'+it.Title+' ('+it.Year+')</div>' +
+            '<div class="modal-row-sub">'+(it.Type || 'movie')+' • '+it.imdbID+'</div>' +
+          '</div>' +
+          '<button data-id="'+it.imdbID+'" class="btn btn-primary">Select</button>';
         list.appendChild(row);
       });
     }
 
-    modal.querySelector('#ff-picker-cancel').addEventListener('click', () => {
+    modal.querySelector('#ff-picker-cancel').addEventListener('click', ()=>{
       document.body.removeChild(overlay);
-      resolve({ mode: 'cancel' });
+      resolve({ mode:'cancel' });
     });
-    modal.querySelector('#ff-picker-manual').addEventListener('click', () => {
+    modal.querySelector('#ff-picker-manual').addEventListener('click', ()=>{
       document.body.removeChild(overlay);
-      resolve({ mode: 'manual' });
+      resolve({ mode:'manual' });
     });
-    list.addEventListener('click', (e) => {
+    list.addEventListener('click', (e)=>{
       const btn = e.target.closest('button[data-id]');
-      if (!btn) return;
+      if(!btn) return;
       const id = btn.getAttribute('data-id');
       document.body.removeChild(overlay);
-      resolve({ mode: 'pick', imdbID: id });
+      resolve({ mode:'pick', imdbID:id });
     });
   });
 }
 
-/* =================== Address Lookup =================== */
 async function fetchAddressesByPostcode(pc) {
-  const cfg = window.__FLEETFILM__CONFIG || {};
-  const domainToken = cfg.getAddressDomainToken || '';
-  const apiKey = cfg.getAddressIoKey || cfg.getaddressIoKey || '';
-
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
-  if (!norm || !/^[A-Z0-9]{5,7}$/.test(norm)) {
-    console.warn('[fetchAddressesByPostcode] Invalid postcode format:', norm);
+  if (!norm) {
+    console.warn('[nominatim] Empty or invalid postcode');
     return [];
   }
-  console.log('[fetchAddressesByPostcode] Attempting lookup for postcode:', norm);
+  console.log('[nominatim] Attempting lookup for:', norm);
 
-  // Check if API credentials are present
-  if (!domainToken && !apiKey) {
-    console.warn('[fetchAddressesByPostcode] No getaddress.io API key or domain token provided in __FLEETFILM__CONFIG');
-    alert('Address lookup requires a getaddress.io API key. Please configure it or enter details manually.');
-  }
+  try {
+    // Nominatim search with postcode, restricted to UK, building-level zoom
+    const params = new URLSearchParams({
+      q: norm,
+      format: 'json',
+      addressdetails: 1,
+      countrycodes: 'gb',
+      zoom: 18, // Building-level detail
+      limit: 50 // Reasonable limit for addresses
+    });
+    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    console.log('[nominatim] Fetching:', url);
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'FleetFilmApp/1.0 (contact: your-contact-email@example.com)' } // Replace with your email
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      console.error(`[nominatim] Failed: ${r.status} ${txt || r.statusText}`);
+      return [];
+    }
+    const data = await r.json();
+    console.log('[nominatim] Response:', data);
 
-  // Helper to hit getaddress.io and normalize results
-  const callGetAddress = async (url) => {
-    console.log('[fetchAddressesByPostcode] Fetching from getaddress.io:', url);
-    try {
-      const r = await fetch(url, { method: 'GET' });
-      if (!r.ok) {
-        const txt = await r.text().catch(() => '');
-        console.error(`[fetchAddressesByPostcode] getaddress.io failed: ${r.status} ${txt || r.statusText}`);
-        throw new Error(`getaddress.io request failed: ${r.status} ${txt || r.statusText}`);
+    if (!Array.isArray(data) || data.length === 0) {
+      console.warn('[nominatim] No results found');
+      // Fallback to Postcodes.io for town/county
+      try {
+        const pcUrl = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
+        console.log('[postcodes.io] Fallback fetching:', pcUrl);
+        const pcR = await fetch(pcUrl);
+        if (!pcR.ok) throw new Error('Postcodes.io fallback failed');
+        const pcData = await pcR.json();
+        console.log('[postcodes.io] Fallback response:', pcData);
+        if (pcData.status === 200 && pcData.result) {
+          const res = pcData.result;
+          const town = res.admin_district || res.parish || '';
+          const county = res.region || res.county || '';
+          return [{
+            house: '',
+            street: '',
+            town: town,
+            county: county,
+            postcode: norm,
+            address: '',
+            label: town || county ? `${town || county}, ${norm}` : norm
+          }];
+        }
+      } catch (e) {
+        console.error('[postcodes.io] Fallback error:', e.message);
       }
-      const data = await r.json();
-      console.log('[fetchAddressesByPostcode] getaddress.io response:', data);
-      const raw = Array.isArray(data.addresses) ? data.addresses : (data.Address || data.address || []);
-      if (!raw.length) {
-        console.warn('[fetchAddressesByPostcode] getaddress.io returned no addresses');
-      }
-      return raw.map(a => {
-        const line1 = a.line_1 || a.building_name || a.building_number || '';
-        const number = (a.building_number || '').toString();
-        const house = line1 || number;
-        const street = a.thoroughfare || a.line_2 || '';
-        const town = a.town_or_city || a.post_town || a.town || '';
-        const county = a.county || a.county_name || '';
-        const postcode = (a.postcode || norm).toUpperCase();
+      return [];
+    }
+
+    // Normalize Nominatim results
+    const addresses = data
+      .map(item => {
+        if (!item.address) return null;
+        const addr = item.address;
+        const house = addr.house_number || addr.building || '';
+        const street = addr.road || addr.street || '';
+        const town = addr.town || addr.city || addr.village || addr.suburb || '';
+        const county = addr.county || addr.state || '';
+        const postcode = addr.postcode ? addr.postcode.toUpperCase().replace(/\s+/g, '') : norm;
 
         const labelParts = [house, street, town, county, postcode].filter(Boolean);
         return {
-          house: house || '',
-          street: street || '',
-          town: town || '',
-          county: county || '',
-          postcode,
+          house: house,
+          street: street,
+          town: town,
+          county: county,
+          postcode: postcode,
           address: [house, street].filter(Boolean).join(' '),
           label: labelParts.join(', ')
         };
-      });
-    } catch (e) {
-      console.error('[fetchAddressesByPostcode] getaddress.io error:', e.message);
-      throw e;
-    }
-  };
+      })
+      .filter(a => a && (a.house || a.street || a.address)); // Include entries with at least house or street
 
-  // 1) Try Domain Token (browser-safe)
-  if (domainToken) {
-    try {
-      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&domain_token=${encodeURIComponent(domainToken)}`;
-      const list = await callGetAddress(url);
-      if (list.length) {
-        console.log('[fetchAddressesByPostcode] Success with domain token:', list);
-        return list;
-      }
-    } catch (e) {
-      console.warn('[fetchAddressesByPostcode] Domain token path failed:', e.message);
-    }
-  }
+    console.log('[nominatim] Normalized addresses:', addresses);
 
-  // 2) Fallback to API key
-  if (apiKey) {
-    try {
-      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(apiKey)}`;
-      const list = await callGetAddress(url);
-      if (list.length) {
-        console.log('[fetchAddressesByPostcode] Success with API key:', list);
-        return list;
-      }
-    } catch (e) {
-      console.warn('[fetchAddressesByPostcode] API key path failed:', e.message);
+    // If no specific addresses (only town/county), return a single fallback entry
+    if (addresses.length === 0) {
+      const town = data[0].address.town || data[0].address.city || data[0].address.village || '';
+      const county = data[0].address.county || data[0].address.state || '';
+      return [{
+        house: '',
+        street: '',
+        town: town,
+        county: county,
+        postcode: norm,
+        address: '',
+        label: town || county ? `${town || county}, ${norm}` : norm
+      }];
     }
-  }
 
-  // 3) Last resort: postcodes.io (gives town/county only — no property list)
-  console.log('[fetchAddressesByPostcode] Falling back to postcodes.io');
-  try {
-    const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
-    if (r.ok) {
-      const data = await r.json();
-      if (data && data.status === 200 && data.result) {
-        const res = data.result;
-        const county = res.admin_county || res.region || res.country || ''; // Explicitly avoid ccg
-        console.log('[fetchAddressesByPostcode] postcodes.io response:', res);
-        return [{
-          house: '',
-          street: '',
-          town: res.admin_district || res.parish || res.region || '',
-          county: county,
-          postcode: norm,
-          address: '',
-          label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`
-        }];
-      } else {
-        console.warn('[fetchAddressesByPostcode] postcodes.io returned no results:', data);
-      }
-    } else {
-      console.warn('[fetchAddressesByPostcode] postcodes.io failed:', r.status, r.statusText);
-    }
+    return addresses;
+
   } catch (e) {
-    console.warn('[fetchAddressesByPostcode] postcodes.io lookup failed:', e.message);
+    console.error('[nominatim] Lookup error:', e.message);
+    return [];
   }
-
-  console.warn('[fetchAddressesByPostcode] No addresses found for:', norm);
-  return [];
 }
 
-/* =================== Address Modal =================== */
 function showAddLocationModal(prefill = {}) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
@@ -673,17 +661,24 @@ function showAddLocationModal(prefill = {}) {
           <h2>${prefill.id ? 'Edit location' : 'Add new location'}</h2>
           <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
         </div>
+
         <div class="form-grid">
           <label class="span-2">Location Name (required)
-            <input id="loc-name" type="text" placeholder="e.g. Church Hall" value="${prefill.name || ''}" required>
+            <input id="loc-name" type="text" placeholder="e.g. Church Hall"
+                   value="${prefill.name || ''}" required>
           </label>
+
           <label>Postcode
-            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3RA" value="${prefill.postcode || ''}">
+            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3RA"
+                   value="${prefill.postcode || ''}">
           </label>
           <div class="actions">
             <button class="btn" id="loc-lookup">Lookup</button>
           </div>
+
+          <!-- Address suggestions render here -->
           <div class="span-2" id="loc-options"></div>
+
           <label>House / Name
             <input id="loc-house" type="text" value="${prefill.house || ''}">
           </label>
@@ -696,10 +691,14 @@ function showAddLocationModal(prefill = {}) {
           <label>County
             <input id="loc-county" type="text" value="${prefill.county || ''}">
           </label>
+
           <div id="loc-msg" class="notice hidden span-2"></div>
+
           <div class="actions span-2">
             <div class="spacer"></div>
-            <button class="btn btn-primary" id="loc-save">${prefill.id ? 'Save changes' : 'Save'}</button>
+            <button class="btn btn-primary" id="loc-save">
+              ${prefill.id ? 'Save changes' : 'Save'}
+            </button>
           </div>
         </div>
       </div>`;
@@ -720,49 +719,102 @@ function showAddLocationModal(prefill = {}) {
 
       try {
         const results = await fetchAddressesByPostcode(pc);
+        console.log('[showAddLocationModal] Lookup results:', results);
         listEl.innerHTML = '';
 
         if (!results.length) {
-          listEl.innerHTML = '<div class="notice">No addresses found for this postcode.</div>';
-          toast('No addresses found. Try another postcode or enter details manually.');
+          listEl.innerHTML = '<div class="notice">No results found. Enter details manually below.</div>';
+          $('#loc-house').value = '';
+          $('#loc-street').value = '';
+          $('#loc-town').value = '';
+          $('#loc-county').value = '';
+          $('#loc-postcode').value = pc.toUpperCase();
           return;
         }
 
-        results.forEach(a => {
+        // Store results for click handlers
+        const addressMap = new Map();
+        results.forEach((a, index) => {
+          addressMap.set(`addr-${index}`, a);
+        });
+
+        // Render buttons for all results, including partial ones
+        results.forEach((a, index) => {
+          console.log('[showAddLocationModal] Rendering address:', a.label);
           const b = document.createElement('button');
           b.className = 'btn btn-ghost';
           b.type = 'button';
           b.style.width = '100%';
           b.style.textAlign = 'left';
           b.textContent = a.label;
-          b.onclick = () => {
-            $('#loc-house').value = a.house || '';
-            $('#loc-street').value = a.street || '';
-            $('#loc-town').value = a.town || '';
-            $('#loc-county').value = a.county || '';
-            $('#loc-postcode').value = a.postcode || pc.toUpperCase();
-            listEl.innerHTML = ''; // Clear suggestions after selection
-          };
+          b.dataset.addrId = `addr-${index}`;
           listEl.appendChild(b);
         });
+
+        // If only a fallback result (no house/street), show manual entry message
+        if (results.length === 1 && !results[0].address) {
+          listEl.innerHTML = '<div class="notice">No specific addresses found for this postcode. Select the area below or enter details manually.</div>' + listEl.innerHTML;
+        }
+
+        // Event delegation for address buttons
+        listEl.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-addr-id]');
+          if (!btn) return;
+          const addrId = btn.dataset.addrId;
+          const address = addressMap.get(addrId);
+
+          console.log('[showAddLocationModal] Address clicked:', address);
+
+          if (!address) {
+            console.error('[showAddLocationModal] Address not found for ID:', addrId);
+            toast('Error: Address data not found');
+            return;
+          }
+
+          try {
+            const inputs = {
+              house: $('#loc-house'),
+              street: $('#loc-street'),
+              town: $('#loc-town'),
+              county: $('#loc-county'),
+              postcode: $('#loc-postcode')
+            };
+
+            if (!inputs.house || !inputs.street || !inputs.town || !inputs.county || !inputs.postcode) {
+              console.error('[showAddLocationModal] Missing input elements:', inputs);
+              toast('Error: Form fields not found');
+              return;
+            }
+
+            inputs.house.value = address.house || '';
+            inputs.street.value = address.street || '';
+            inputs.town.value = address.town || '';
+            inputs.county.value = address.county || '';
+            inputs.postcode.value = address.postcode || pc.toUpperCase();
+            console.log('[showAddLocationModal] Fields populated:', address);
+          } catch (e) {
+            console.error('[showAddLocationModal] Error setting fields:', e.message);
+            toast('Error setting address fields');
+          }
+        });
       } catch (e) {
-        console.warn('[showAddLocationModal] Lookup error:', e.message);
-        listEl.innerHTML = '<div class="notice">Lookup failed (check API key or network).</div>';
-        toast('Lookup failed. Check your API key or enter details manually.');
+        console.error('[showAddLocationModal] Lookup error:', e.message);
+        listEl.innerHTML = '<div class="notice">Lookup failed. Try another postcode or enter manually.</div>';
       }
     };
 
     // Save
     $('#loc-save').onclick = async () => {
-      const name = ($('#loc-name').value || '').trim();
-      const house = ($('#loc-house').value || '').trim();
-      const street = ($('#loc-street').value || '').trim();
-      const town = ($('#loc-town').value || '').trim();
-      const county = ($('#loc-county').value || '').trim();
+      const name     = ($('#loc-name').value || '').trim();
+      const house    = ($('#loc-house').value || '').trim();
+      const street   = ($('#loc-street').value || '').trim();
+      const town     = ($('#loc-town').value || '').trim();
+      const county   = ($('#loc-county').value || '').trim();
       const postcode = ($('#loc-postcode').value || '').trim().toUpperCase();
 
       if (!name) { toast('Location Name is required.'); return; }
 
+      // Keep combined line for legacy UI; also store structured fields
       const addressCombined = [house, street].filter(Boolean).join(' ').trim();
 
       try {
@@ -771,7 +823,6 @@ function showAddLocationModal(prefill = {}) {
             name, address: addressCombined, postcode, city: town,
             house, street, town, county
           });
-          console.log('[showAddLocationModal] Updated location:', prefill.id);
           close({ id: prefill.id, name });
         } else {
           const ref = await db.collection('locations').add({
@@ -779,12 +830,10 @@ function showAddLocationModal(prefill = {}) {
             house, street, town, county,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          console.log('[showAddLocationModal] Added new location:', ref.id);
           close({ id: ref.id, name });
         }
       } catch (e) {
-        console.error('[showAddLocationModal] Save error:', e.message);
-        toast(e.message || 'Could not save location');
+        toast(e.message || 'Could not save');
       }
     };
 
@@ -797,28 +846,253 @@ function showAddLocationModal(prefill = {}) {
   });
 }
 
+/* =================== Submit (Title+Year; manual ok) =================== */
+async function submitFilm(){
+  const title = (els.title.value||'').trim();
+  const yearStr = (els.year.value||'').trim();
+  const year = parseInt(yearStr, 10);
+  if(!title){ alert('Title required'); return; }
+  if(!year || yearStr.length !== 4){ alert('Enter a 4-digit Year (e.g. 1994)'); return; }
+
+  if(!state.user){
+    alert('Please sign in first.');
+    return;
+  }
+
+  let picked = null;
+  try{
+    const res = await omdbSearch(title, year);
+    const candidates = (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
+    const choice = await showPicker(candidates);
+    if(choice.mode === 'cancel'){ return; }
+    if(choice.mode === 'manual'){ picked = null; }
+    if(choice.mode === 'pick' && choice.imdbID){ picked = await omdbDetailsById(choice.imdbID); }
+  }catch{
+    const ok = confirm('Could not reach OMDb. Add the film manually?');
+    if(!ok) return;
+  }
+
+  const base = {
+    title, year,
+    synopsis: '',
+    status: 'intake',
+    createdBy: state.user.uid,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    runtimeMinutes: null,
+    language: '',
+    ageRating: '',
+    ukAgeRating: '',
+    genre: '',
+    country: '',
+    hasDisk: false,
+    availability: '',
+    criteria: { basic_pass: false },
+    hasUkDistributor: null,
+    distStatus: '',
+    posterUrl: '',
+    imdbID: '',
+    // viewing scheduling
+    viewingDate: null,            // Timestamp
+    viewingTime: '',
+    viewingLocationId: '',
+    viewingLocationName: '',
+    // green list timestamp
+    greenAt: null
+  };
+
+  if(picked){
+    let runtimeMinutes = null;
+    if(picked.Runtime && /\d+/.test(picked.Runtime)){
+      runtimeMinutes = parseInt(picked.Runtime.match(/\d+/)[0],10);
+    }
+    base.posterUrl = (picked.Poster && picked.Poster!=='N/A') ? picked.Poster : '';
+    base.ageRating = picked.Rated && picked.Rated!=='N/A' ? picked.Rated : '';
+    base.ukAgeRating = mapMpaaToUk(base.ageRating);
+    base.genre = picked.Genre && picked.Genre!=='N/A' ? picked.Genre : '';
+    base.language = picked.Language && picked.Language!=='N/A' ? picked.Language : '';
+    base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
+    base.imdbID = picked.imdbID || '';
+    if(runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
+    if(picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
+    if(picked.Title) base.title = picked.Title;
+    if(picked.Year && /^\d{4}$/.test(picked.Year)) base.year = parseInt(picked.Year,10);
+  }
+
+  try{
+    await db.collection('films').add(base);
+    if(els.submitMsg){
+      els.submitMsg.textContent = 'Added to Pending Films.';
+      els.submitMsg.classList.remove('hidden');
+      setTimeout(()=>els.submitMsg.classList.add('hidden'), 1800);
+    }
+    if(els.title) els.title.value='';
+    if(els.year) els.year.value='';
+    setView('pending');
+  }catch(e){ alert(e.message); }
+}
+
+/* =================== Fetch helpers =================== */
+async function fetchByStatus(status){
+  const snap = await db.collection('films').where('status','==', status).get();
+  const docs = snap.docs.sort((a, b) => {
+    const ta = a.data().createdAt && typeof a.data().createdAt.toMillis === 'function' ? a.data().createdAt.toMillis() : 0;
+    const tb = b.data().createdAt && typeof b.data().createdAt.toMillis === 'function' ? b.data().createdAt.toMillis() : 0;
+    return tb - ta;
+  });
+  return docs;
+}
+
+/* =================== Rendering helpers =================== */
+function pendingCard(f, actionsHtml=''){
+  const year = f.year ? `(${f.year})` : '';
+  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
+  return `<div class="card" data-film-card="${f.id || ''}">
+    <div class="item">
+      <div class="item-left">
+        ${poster}
+        <div class="item-title">${f.title} ${year}</div>
+      </div>
+      <div class="item-right">${actionsHtml}</div>
+    </div>
+  </div>`;
+}
+
+function detailCard(f, actionsHtml=''){
+  const year = f.year ? `(${f.year})` : '';
+  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
+  return `<div class="card detail-card" data-film-card="${f.id || ''}">
+    <div class="item item--split">
+      <div class="item-left">
+        ${poster}
+        <div>
+          <div class="item-title">${f.title} ${year}</div>
+          <div class="kv">
+            <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
+            <div>Language:</div><div>${f.language || '—'}</div>
+            <div>UK Age Rating:</div><div>${f.ukAgeRating || '—'}</div>
+            <div>Genre:</div><div>${f.genre || '—'}</div>
+            <div>Country:</div><div>${f.country || '—'}</div>
+            <div>UK Distributor:</div><div>${f.hasUkDistributor===true?'Yes':f.hasUkDistributor===false?'No':'—'}</div>
+            <div>Disk available:</div><div>${f.hasDisk ? 'Yes' : 'No'}</div>
+            <div>Where to see:</div><div>${f.availability || '—'}</div>
+          </div>
+        </div>
+      </div>
+      <div class="item-right">${actionsHtml}</div>
+    </div>
+  </div>`;
+}
+
+/* =================== Pending Films =================== */
+async function loadPending(){
+  const docs = await fetchByStatus('intake');
+  let films = docs.map(d=>({ id:d.id, ...d.data() }));
+  if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
+
+  els.pendingList.innerHTML = '';
+  if(!films.length){ els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
+
+  films.forEach(f=>{
+    const actions = `
+      <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
+      <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
+      <button class="btn" data-archive="${f.id}">Archive</button>
+    `;
+    els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
+  });
+
+  els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.next;
+      const ref = db.collection('films').doc(id);
+      await ref.update({ status:'review_basic' });
+      loadPending();
+    });
+  });
+
+  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.discard;
+      await db.collection('films').doc(id).update({ status:'discarded' });
+      loadPending();
+    });
+  });
+
+  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.archive;
+      await db.collection('films').doc(id).update({ status:'archived', archivedFrom:'intake' });
+      loadPending();
+    });
+  });
+
+  setupPendingFilters();
+}
+
+/* =================== BASIC =================== */
+async function loadBasic(){
+  const docs = await fetchByStatus('review_basic');
+  els.basicList.innerHTML = '';
+  if(!docs.length){ els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
+  docs.forEach(doc=>{
+    const f = { id: doc.id, ...doc.data() };
+    const form = `
+      <div class="form-grid">
+        <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
+        <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
+        <label>UK Age Rating<input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, NR" /></label>
+        <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
+        <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
+        <label>Disk Available?
+          <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
+        </label>
+        <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
+        <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
+        <div class="actions span-2">
+          <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → Viewing</button>
+          <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+        </div>
+      </div>
+    `;
+    els.basicList.insertAdjacentHTML('beforeend', detailCard(f, form));
+  });
+  els.basicList.querySelectorAll('[data-edit]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const id = inp.dataset.id;
+      let val = inp.value;
+      const field = inp.dataset.edit;
+      if(field==='runtimeMinutes') val = parseInt(val||'0',10) || null;
+      if(field==='hasDisk') val = (val==='true');
+      await db.collection('films').doc(id).update({ [field]: val });
+    });
+  });
+  els.basicList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+  });
+}
+
 /* =================== VIEWING =================== */
-async function loadViewing() {
+async function loadViewing(){
   els.viewingList.innerHTML = '';
 
   const docs = await fetchByStatus('viewing');
-  if (!docs.length) {
-    els.viewingList.insertAdjacentHTML('beforeend', '<div class="notice">Viewing queue is empty.</div>');
+  if(!docs.length){
+    els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
   }
 
   // Locations
   const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d => ({ id: d.id, ...(d.data()) }));
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
 
-  docs.forEach(doc => {
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const dateISO = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
-      ? f.viewingDate.toDate().toISOString().slice(0, 10)
+      ? f.viewingDate.toDate().toISOString().slice(0,10)
       : '';
     let locOptions = '<option value="">Select location…</option>';
-    locs.forEach(l => {
-      const sel = (f.viewingLocationId === l.id) ? ' selected' : '';
+    locs.forEach(l=>{
+      const sel = (f.viewingLocationId===l.id) ? ' selected' : '';
       locOptions += `<option value="${l.id}"${sel}>${l.name}</option>`;
     });
     locOptions += '<option value="__add">+ Add new location…</option>';
@@ -830,30 +1104,34 @@ async function loadViewing() {
             ${locOptions}
           </select>
         </label>
+
         <label>Date
           <input type="date" data-edit="viewingDate" data-id="${f.id}" value="${dateISO}">
         </label>
+
         <label>Time (optional)
-          <input type="time" data-edit="viewingTime" data-id="${f.id}" value="${f.viewingTime || ''}">
+          <input type="time" data-edit="viewingTime" data-id="${f.id}" value="${f.viewingTime||''}">
         </label>
+
         <div class="actions span-2" style="margin-top:4px">
           <button class="btn btn-primary" data-act="set-datetime" data-id="${f.id}">Open Calendar</button>
           <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">→ Voting</button>
           <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
         </div>
-      </div>`;
+      </div>
+    `;
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
   // Location dropdown changes (including "Add new")
-  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel => {
-    sel.addEventListener('change', async () => {
+  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
       const id = sel.dataset.id;
       const val = sel.value;
 
-      if (val === '__add') {
+      if(val === '__add'){
         const newLoc = await showAddLocationModal();
-        if (newLoc) {
+        if(newLoc){
           await db.collection('films').doc(id).update({
             viewingLocationId: newLoc.id,
             viewingLocationName: newLoc.name || ''
@@ -863,7 +1141,7 @@ async function loadViewing() {
         return;
       }
 
-      if (!val) {
+      if(!val){
         await db.collection('films').doc(id).update({
           viewingLocationId: '',
           viewingLocationName: ''
@@ -883,17 +1161,17 @@ async function loadViewing() {
   });
 
   // Inline date/time edits
-  els.viewingList.querySelectorAll('input[data-edit="viewingDate"]').forEach(inp => {
-    inp.addEventListener('change', async () => {
+  els.viewingList.querySelectorAll('input[data-edit="viewingDate"]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
       const val = inp.value;
-      const ts = val ? firebase.firestore.Timestamp.fromDate(new Date(val + 'T00:00:00')) : null;
+      const ts = val ? firebase.firestore.Timestamp.fromDate(new Date(val+'T00:00:00')) : null;
       await db.collection('films').doc(id).update({ viewingDate: ts });
       await refreshCalendarOnly();
     });
   });
-  els.viewingList.querySelectorAll('input[data-edit="viewingTime"]').forEach(inp => {
-    inp.addEventListener('change', async () => {
+  els.viewingList.querySelectorAll('input[data-edit="viewingTime"]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
       const id = inp.dataset.id;
       await db.collection('films').doc(id).update({ viewingTime: inp.value || '' });
       await refreshCalendarOnly();
@@ -901,12 +1179,12 @@ async function loadViewing() {
   });
 
   // Buttons
-  els.viewingList.querySelectorAll('button[data-act]').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  els.viewingList.querySelectorAll('button[data-act]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
       const id = btn.dataset.id;
       const act = btn.dataset.act;
 
-      if (act === 'set-datetime') {
+      if(act === 'set-datetime'){
         sessionStorage.setItem('scheduleTarget', id);
         location.hash = 'calendar';
         return;
@@ -917,9 +1195,9 @@ async function loadViewing() {
 }
 
 /* =================== CALENDAR PAGE =================== */
-async function loadCalendar() {
+async function loadCalendar(){
   const wrap = document.getElementById('calendar-list');
-  if (wrap && !document.getElementById('cal-grid')) {
+  if(wrap && !document.getElementById('cal-grid')){
     wrap.innerHTML = `
       <div class="card" id="calendar-card">
         <div class="cal-head">
@@ -932,13 +1210,19 @@ async function loadCalendar() {
         </div>
         <div class="cal-grid" id="cal-grid"></div>
         <div class="hr"></div>
+
+        <!-- Editor -->
         <div class="form-grid" id="cal-editor" style="align-items:end">
           <label>Date<input id="cal-date" type="date"></label>
           <label>Time (optional)<input id="cal-time" type="time"></label>
-          <label>Location<select id="cal-loc-select"></select></label>
+
+          <label>Location
+            <select id="cal-loc-select"></select>
+          </label>
           <div class="actions">
             <button class="btn" id="cal-add-loc">+ Add new location</button>
           </div>
+
           <div class="actions span-2">
             <button class="btn btn-primary" id="cal-save">Save schedule</button>
             <button class="btn btn-danger" id="cal-clear">Remove from calendar</button>
@@ -950,76 +1234,78 @@ async function loadCalendar() {
   await refreshCalendarOnly();
 
   const back = document.getElementById('cal-back');
-  if (back) { back.onclick = () => { location.hash = 'viewing'; }; }
+  if(back){ back.onclick = ()=>{ location.hash = 'viewing'; }; }
 
   const prev = document.getElementById('cal-prev');
   const next = document.getElementById('cal-next');
-  if (prev) prev.onclick = () => { calOffset -= 1; refreshCalendarOnly(); };
-  if (next) next.onclick = () => { calOffset += 1; refreshCalendarOnly(); };
+  if(prev) prev.onclick = ()=>{ calOffset -= 1; refreshCalendarOnly(); };
+  if(next) next.onclick = ()=>{ calOffset += 1; refreshCalendarOnly(); };
 
   await populateCalendarEditor();
 }
 
-async function populateCalendarEditor() {
+async function populateCalendarEditor(){
   const filmId = sessionStorage.getItem('scheduleTarget');
   const dateInp = document.getElementById('cal-date');
   const timeInp = document.getElementById('cal-time');
-  const sel = document.getElementById('cal-loc-select');
+  const sel     = document.getElementById('cal-loc-select');
   const saveBtn = document.getElementById('cal-save');
-  const clearBtn = document.getElementById('cal-clear');
-  const addBtn = document.getElementById('cal-add-loc');
+  const clearBtn= document.getElementById('cal-clear');
+  const addBtn  = document.getElementById('cal-add-loc');
 
-  if (!dateInp || !timeInp || !sel) return;
+  if(!dateInp || !timeInp || !sel) return;
 
   const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d => ({ id: d.id, ...(d.data()) }));
+  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
   sel.innerHTML = `<option value="">Select location…</option>` +
-    locs.map(l => `<option value="${l.id}">${l.name || '(no name)'}</option>`).join('');
+    locs.map(l=>`<option value="${l.id}">${l.name||'(no name)'}</option>`).join('');
 
-  if (!filmId) {
-    if (saveBtn) saveBtn.disabled = true;
-    if (clearBtn) clearBtn.disabled = true;
-  } else {
-    if (saveBtn) saveBtn.disabled = false;
-    if (clearBtn) clearBtn.disabled = false;
+  if(!filmId){
+    if(saveBtn) saveBtn.disabled = true;
+    if(clearBtn) clearBtn.disabled = true;
+  }else{
+    if(saveBtn) saveBtn.disabled = false;
+    if(clearBtn) clearBtn.disabled = false;
 
     const snap = await db.collection('films').doc(filmId).get();
-    if (snap.exists) {
+    if(snap.exists){
       const f = snap.data();
-      if (f.viewingDate && typeof f.viewingDate.toDate === 'function') {
-        dateInp.value = f.viewingDate.toDate().toISOString().slice(0, 10);
+      if(f.viewingDate && typeof f.viewingDate.toDate === 'function'){
+        dateInp.value = f.viewingDate.toDate().toISOString().slice(0,10);
       } else dateInp.value = '';
       timeInp.value = f.viewingTime || '';
+
       sel.value = f.viewingLocationId || '';
     }
   }
 
-  if (addBtn) {
-    addBtn.onclick = async () => {
+  if(addBtn){
+    addBtn.onclick = async ()=>{
       const created = await showAddLocationModal();
-      if (created) {
+      if(created){
         await populateCalendarEditor();
         sel.value = created.id;
       }
     };
   }
 
-  if (saveBtn) {
-    saveBtn.onclick = async () => {
-      if (!filmId) { alert('Select a film from Viewing or a pill in the calendar first.'); return; }
+  if(saveBtn){
+    saveBtn.onclick = async ()=>{
+      if(!filmId){ alert('Select a film from Viewing or a pill in the calendar first.'); return; }
       const dateVal = dateInp.value;
       const timeVal = timeInp.value || '';
-      const locId = sel.value;
-      if (!dateVal) { alert('Pick a date'); return; }
+      const locId   = sel.value;
+      if(!dateVal){ alert('Pick a date'); return; }
 
       let locName = '';
-      if (locId) {
+      if(locId){
         const ld = await db.collection('locations').doc(locId).get();
         locName = ld.exists ? (ld.data().name || '') : '';
       }
 
+      const ts = firebase.firestore.Timestamp.fromDate(new Date(dateVal+'T00:00:00'));
       await db.collection('films').doc(filmId).update({
-        viewingDate: firebase.firestore.Timestamp.fromDate(new Date(dateVal + 'T00:00:00')),
+        viewingDate: ts,
         viewingTime: timeVal,
         viewingLocationId: locId || '',
         viewingLocationName: locName
@@ -1029,140 +1315,142 @@ async function populateCalendarEditor() {
     };
   }
 
-  if (clearBtn) {
-    clearBtn.onclick = async () => {
-      if (!filmId) return;
-      if (!confirm('Remove from calendar?')) return;
+  if(clearBtn){
+    clearBtn.onclick = async ()=>{
+      if(!filmId) return;
+      if(!confirm('Remove from calendar?')) return;
       await db.collection('films').doc(filmId).update({
         viewingDate: null,
         viewingTime: '',
         viewingLocationId: '',
         viewingLocationName: ''
       });
-      dateInp.value = ''; timeInp.value = ''; sel.value = '';
+      dateInp.value=''; timeInp.value=''; sel.value='';
       await refreshCalendarOnly();
     };
   }
 }
 
-async function prefillCalendarEditor(filmId) {
+async function prefillCalendarEditor(filmId){
   sessionStorage.setItem('scheduleTarget', filmId);
   await populateCalendarEditor();
 }
 
 /* =================== VOTING =================== */
-async function loadVote() {
+async function loadVote(){
   const docs = await fetchByStatus('voting');
-  els.voteList.innerHTML = '';
-  if (!docs.length) { els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
+  els.voteList.innerHTML='';
+  if(!docs.length){ els.voteList.innerHTML = '<div class="notice">No films in Voting.</div>'; return; }
   const my = state.user && state.user.uid;
 
   const nameCache = {};
 
-  for (const doc of docs) {
+  for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
     const vs = await db.collection('films').doc(f.id).collection('votes').get();
-    let yes = 0, no = 0;
+    let yes=0, no=0;
     const voters = [];
-    vs.forEach(v => {
+    vs.forEach(v=>{
       const d = v.data(); const val = d.value;
-      if (val === 1) yes += 1;
-      if (val === -1) no += 1;
-      voters.push({ uid: v.id, value: val, at: d.createdAt });
+      if(val===1) yes+=1;
+      if(val===-1) no+=1;
+      voters.push({ uid:v.id, value:val, at:d.createdAt });
     });
 
-    const listVotes = await (async () => {
-      if (!voters.length) return '';
+    const listVotes = await (async ()=>{
+      if(!voters.length) return '';
       const parts = [];
-      for (const v of voters) {
-        if (!nameCache[v.uid]) {
+      for(const v of voters){
+        if(!nameCache[v.uid]){
           const u = await db.collection('users').doc(v.uid).get();
           nameCache[v.uid] = u.exists ? (u.data().displayName || u.data().email || v.uid) : v.uid;
         }
         const who = nameCache[v.uid];
-        const what = v.value === 1 ? 'Yes' : v.value === -1 ? 'No' : '—';
+        const what = v.value===1 ? 'Yes' : v.value===-1 ? 'No' : '—';
         parts.push(`<span class="badge">${who}: ${what}</span>`);
       }
       return parts.join(' ');
     })();
 
     let myVoteVal = 0;
-    if (my) {
+    if(my){
       const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
-      if (vSnap.exists) myVoteVal = vSnap.data().value || 0;
+      if(vSnap.exists) myVoteVal = vSnap.data().value || 0;
     }
 
     const actions = `
       <div class="actions" role="group" aria-label="Vote buttons">
-        <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal === 1}">👍 Yes</button>
-        <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal === -1}">👎 No</button>
+        <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
+        <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
       </div>
       <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>
       <div style="margin-top:6px">${listVotes}</div>
       <div class="actions" style="margin-top:8px">
         <button class="btn" data-act="to-discard" data-id="${f.id}">Discard</button>
-      </div>`;
+      </div>
+    `;
     els.voteList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   }
 
   els.voteList.querySelectorAll('button[data-vote]').forEach(btn => {
-    btn.addEventListener('click', () => castVote(btn.dataset.id, parseInt(btn.dataset.vote, 10)));
+    btn.addEventListener('click', () => castVote(btn.dataset.id, parseInt(btn.dataset.vote,10)));
   });
 }
 
-async function castVote(filmId, value) {
-  try {
+async function castVote(filmId, value){
+  try{
     await db.collection('films').doc(filmId).collection('votes').doc(state.user.uid).set({
       value, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    }, {merge:true});
     await checkAutoOutcome(filmId);
     loadVote();
-  } catch (e) { alert(e.message); }
+  }catch(e){ alert(e.message); }
 }
 
-async function checkAutoOutcome(filmId) {
+async function checkAutoOutcome(filmId){
   const ref = db.collection('films').doc(filmId);
   const vs = await ref.collection('votes').get();
-  let yes = 0, no = 0;
-  vs.forEach(v => {
+  let yes=0, no=0;
+  vs.forEach(v=>{
     const val = v.data().value;
-    if (val === 1) yes += 1;
-    if (val === -1) no += 1;
+    if(val===1) yes+=1;
+    if(val===-1) no+=1;
   });
-  if (yes >= 4) {
-    await ref.update({ status: 'uk_check' });
-  } else if (no >= 4) {
-    await ref.update({ status: 'discarded' });
+  if(yes>=4){
+    await ref.update({ status:'uk_check' });
+  } else if(no>=4){
+    await ref.update({ status:'discarded' });
   }
 }
 
 /* =================== UK CHECK =================== */
-async function loadUk() {
+async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
-  if (!docs.length) { els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
-  docs.forEach(doc => {
+  if(!docs.length){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = `
       <div class="actions">
         <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor Confirmed ✓</button>
         <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
-      </div>`;
+      </div>
+    `;
     els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.ukList.querySelectorAll('button[data-id]').forEach(b => {
-    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
+  els.ukList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
   });
 }
 
 /* =================== GREEN LIST =================== */
-async function loadGreen() {
+async function loadGreen(){
   const docs = await fetchByStatus('greenlist');
   els.greenList.innerHTML = '';
-  if (!docs.length) { els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>'; return; }
-  docs.forEach(doc => {
+  if(!docs.length){ els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function') ? f.greenAt.toDate().toISOString().slice(0, 10) : '—';
+    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function') ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
@@ -1171,28 +1459,29 @@ async function loadGreen() {
       </div>`;
     els.greenList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.greenList.querySelectorAll('button[data-id]').forEach(b => {
-    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
+  els.greenList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
   });
 }
 
 /* =================== NEXT PROGRAMME =================== */
-async function loadNextProgramme() {
+async function loadNextProgramme(){
   const docs = await fetchByStatus('next_programme');
   els.nextProgList.innerHTML = `
     <div class="actions" style="margin-bottom:8px">
       <button class="btn btn-danger" id="btn-archive-all">Archive all</button>
-    </div>`;
+    </div>
+  `;
   const ba = document.getElementById('btn-archive-all');
-  if (ba) ba.addEventListener('click', archiveAllNextProg);
+  if(ba) ba.addEventListener('click', archiveAllNextProg);
 
-  if (!docs.length) {
+  if(!docs.length){
     els.nextProgList.insertAdjacentHTML('beforeend', '<div class="notice">No films in Next Programme.</div>');
     return;
   }
-  docs.forEach(doc => {
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function') ? f.greenAt.toDate().toISOString().slice(0, 10) : '—';
+    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function') ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
@@ -1200,28 +1489,28 @@ async function loadNextProgramme() {
       </div>`;
     els.nextProgList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.nextProgList.querySelectorAll('button[data-id]').forEach(b => {
-    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
+  els.nextProgList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
   });
 }
 
-async function archiveAllNextProg() {
+async function archiveAllNextProg(){
   const docs = await fetchByStatus('next_programme');
   const batch = db.batch();
-  docs.forEach(d => {
+  docs.forEach(d=>{
     const ref = db.collection('films').doc(d.id);
-    batch.update(ref, { status: 'archived', archivedFrom: 'next_programme' });
+    batch.update(ref, { status:'archived', archivedFrom:'next_programme' });
   });
   await batch.commit();
   loadNextProgramme();
 }
 
 /* =================== DISCARDED =================== */
-async function loadDiscarded() {
+async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
-  if (!docs.length) { els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
-  docs.forEach(doc => {
+  if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = `
       <div class="actions">
@@ -1230,17 +1519,17 @@ async function loadDiscarded() {
       </div>`;
     els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.discardedList.querySelectorAll('button[data-id]').forEach(b => {
-    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
+  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
   });
 }
 
 /* =================== ARCHIVE =================== */
-async function loadArchive() {
+async function loadArchive(){
   const docs = await fetchByStatus('archived');
   els.archiveList.innerHTML = '';
-  if (!docs.length) { els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>'; return; }
-  docs.forEach(doc => {
+  if(!docs.length){ els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>'; return; }
+  docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const origin = f.archivedFrom || '';
     const right = origin ? `<span class="badge">${origin}</span>` : '';
@@ -1249,102 +1538,69 @@ async function loadArchive() {
 }
 
 /* =================== Addresses (Admin) =================== */
-async function loadAddressesAdmin() {
+async function loadAddressesAdmin(){
   const tbody = els.addressesTable;
   const msg = els.addressesAdminMsg;
-  if (!tbody) {
-    console.error('[loadAddressesAdmin] Addresses table not found');
-    return;
-  }
+  if(!tbody) return;
 
   tbody.innerHTML = '';
-  try {
-    const snap = await db.collection('locations').orderBy('name').get();
-    if (snap.empty) {
-      if (msg) {
-        msg.textContent = 'No saved addresses yet.';
-        msg.classList.remove('hidden');
-      }
-      console.log('[loadAddressesAdmin] No locations found');
-      return;
-    }
-    if (msg) msg.classList.add('hidden');
+  const snap = await db.collection('locations').orderBy('name').get();
 
-    snap.docs.forEach(d => {
-      const l = { id: d.id, ...d.data() };
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${l.name || ''}</td>
-        <td>${l.address || ''}</td>
-        <td>${l.city || ''}</td>
-        <td>${l.postcode || ''}</td>
-        <td>
-          <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
-          <button class="btn btn-danger" data-del="${l.id}">Delete</button>
-        </td>`;
-      tbody.appendChild(tr);
-    });
-
-    tbody.addEventListener('click', async (e) => {
-      const editBtn = e.target.closest('button[data-edit]');
-      const delBtn = e.target.closest('button[data-del]');
-      if (editBtn) {
-        const id = editBtn.dataset.edit;
-        console.log('[loadAddressesAdmin] Editing location:', id);
-        // Fetch the location data to prefill the modal
-        const doc = await db.collection('locations').doc(id).get();
-        if (doc.exists) {
-          await showAddLocationModal({ id, ...doc.data() });
-          loadAddressesAdmin();
-        }
-      }
-      if (delBtn) {
-        const id = delBtn.dataset.del;
-        if (confirm('Delete this address?')) {
-          try {
-            console.log('[loadAddressesAdmin] Attempting to delete location:', id, 'User role:', state.role);
-            await db.collection('locations').doc(id).delete();
-            console.log('[loadAddressesAdmin] Deleted location:', id);
-            loadAddressesAdmin();
-          } catch (e) {
-            console.error('[loadAddressesAdmin] Delete error:', e.message);
-            if (e.code === 'permission-denied') {
-              alert('Cannot delete address: You do not have admin permissions. Please contact an administrator.');
-            } else {
-              alert(`Failed to delete address: ${e.message || 'Unknown error'}`);
-            }
-          }
-        }
-      }
-    });
-  } catch (e) {
-    console.error('[loadAddressesAdmin] Error loading locations:', e.message);
-    if (msg) {
-      msg.textContent = 'Error loading addresses: ' + e.message;
-      msg.classList.remove('hidden');
-    }
+  if (snap.empty) {
+    if (msg){ msg.textContent = 'No saved addresses yet.'; msg.classList.remove('hidden'); }
+    return;
   }
+  if (msg) msg.classList.add('hidden');
 
-  document.getElementById('addr-refresh')?.addEventListener('click', () => {
-    console.log('[loadAddressesAdmin] Refresh triggered');
-    loadAddressesAdmin();
+  snap.docs.forEach(d=>{
+    const l = { id:d.id, ...d.data() };
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${l.name || ''}</td>
+      <td>${l.address || ''}</td>
+      <td>${l.city || ''}</td>
+      <td>${l.postcode || ''}</td>
+      <td>
+        <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
+        <button class="btn btn-danger" data-del="${l.id}">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
   });
+
+  tbody.addEventListener('click', async (e)=>{
+    const editBtn = e.target.closest('button[data-edit]');
+    const delBtn = e.target.closest('button[data-del]');
+    if (editBtn){
+      const id = editBtn.dataset.edit;
+      await showAddLocationModal({ id });
+      loadAddressesAdmin();
+    }
+    if (delBtn){
+      const id = delBtn.dataset.del;
+      if (confirm('Delete this address?')){
+        await db.collection('locations').doc(id).delete();
+        loadAddressesAdmin();
+      }
+    }
+  });
+
+  document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
 }
 
 /* =================== Admin actions =================== */
-async function adminAction(action, filmId) {
+async function adminAction(action, filmId){
   const ref = db.collection('films').doc(filmId);
-  try {
-    if (action === 'to-discard') await ref.update({ status: 'discarded' });
-    if (action === 'restore') await ref.update({ status: 'intake' });
-    if (action === 'to-voting') await ref.update({ status: 'voting' });
+  try{
+    if(action==='to-discard') await ref.update({ status:'discarded' });
+    if(action==='restore')    await ref.update({ status:'intake' });
+    if(action==='to-voting')  await ref.update({ status:'voting' });
 
     if (action === 'basic-validate') {
       const snap = await ref.get();
       const f = snap.data() || {};
 
       const okRuntime = (f.runtimeMinutes != null) && (f.runtimeMinutes <= 150);
-      const missing = REQUIRED_BASIC_FIELDS.filter(k => {
+      const missing = REQUIRED_BASIC_FIELDS.filter(k=>{
         const v = f[k];
         return v == null || (typeof v === 'string' && v.trim().length === 0);
       });
@@ -1361,31 +1617,31 @@ async function adminAction(action, filmId) {
       return;
     }
 
-    if (action === 'uk-yes') {
-      await ref.update({ hasUkDistributor: true, status: 'greenlist', greenAt: firebase.firestore.FieldValue.serverTimestamp() });
+    if(action==='uk-yes'){
+      await ref.update({ hasUkDistributor:true, status:'greenlist', greenAt: firebase.firestore.FieldValue.serverTimestamp() });
     }
-    if (action === 'uk-no') {
-      await ref.update({ hasUkDistributor: false, status: 'discarded' });
+    if(action==='uk-no'){
+      await ref.update({ hasUkDistributor:false, status:'discarded' });
     }
 
-    if (action === 'to-nextprog') { await ref.update({ status: 'next_programme' }); }
+    if(action==='to-nextprog'){ await ref.update({ status:'next_programme' }); }
 
-    if (action === 'to-archive') {
+    if(action==='to-archive'){
       const snap2 = await ref.get();
       const cur = (snap2.exists && snap2.data().status) || '';
-      await ref.update({ status: 'archived', archivedFrom: cur || '' });
+      await ref.update({ status:'archived', archivedFrom: cur || '' });
     }
 
     routerFromHash();
-  } catch (e) { alert(e.message); }
+  }catch(e){ alert(e.message); }
 }
 
 /* =================== Boot =================== */
-async function boot() {
+async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
-  if (!ok) { alert('Missing Firebase config'); return; }
+  if(!ok){ alert('Missing Firebase config'); return; }
 
-  try { initFirebaseOnce(); } catch (e) { alert('Missing Firebase config'); return; }
+  try { initFirebaseOnce(); } catch(e){ alert('Missing Firebase config'); return; }
 
   // ✅ Complete Google redirect ASAP (mobile needs this)
   try {
@@ -1398,7 +1654,7 @@ async function boot() {
 
   firebase.auth().onAuthStateChanged(async (u) => {
     state.user = u;
-    if (!u) {
+    if(!u){
       showSignedIn(false);
       location.hash = 'submit';
       return;
