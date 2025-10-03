@@ -108,9 +108,9 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-    const pills = items.map(({text, id}) =>
-      `<button class="cal-pill" data-film-id="${id}" style="white-space:normal;display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
-    ).join('');
+   const pills = items.map(({text, id}, i) =>
+  `<button class="cal-pill c${i%4}" data-film-id="${id}" style="display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
+).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
   return headers + cells;
@@ -500,45 +500,52 @@ function showPicker(items){
 /* ===== Address lookup ===== */
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
-  const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
+  const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // both spellings
   const norm = (pc||'').trim().toUpperCase();
   if(!norm) return [];
 
+  // Try getaddress.io first (if key present)
   if (key) {
-    // getaddress.io
-    const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
-    const r = await fetch(url);
-    if(!r.ok) throw new Error('Address API error');
-    const data = await r.json();
-    const out = (data.addresses || []).map(a=>{
-      const parts = [a.line_1, a.line_2, a.line_3].filter(Boolean);
-      const line = parts.join(', ');
-      const city = a.town_or_city || a.post_town || '';
-      return {
-        label: [line, city, a.postcode].filter(Boolean).join(', '),
-        address: line,
-        city: city,
-        postcode: a.postcode || norm
-      };
-    });
-    return out;
+    try{
+      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
+      const r = await fetch(url);
+      if (r.ok) {
+        const data = await r.json();
+        const out = (data.addresses || []).map(a=>{
+          const parts = [a.line_1, a.line_2, a.line_3].filter(Boolean);
+          const line = parts.join(', ');
+          const city = a.town_or_city || a.post_town || '';
+          return {
+            label: [line, city, a.postcode].filter(Boolean).join(', '),
+            address: line,
+            city,
+            postcode: a.postcode || norm
+          };
+        });
+        if (out.length) return out;
+      }
+      // if not ok (404/403/etc), fall through to postcodes.io
+    }catch{/* fall through */}
   }
 
-  // Fallback: postcodes.io
-  const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
-  if(!r.ok) return [];
-  const data = await r.json();
-  if(data && data.status === 200 && data.result){
-    const res = data.result;
-    return [{
-      label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`,
-      address: '',
-      city: res.admin_district || res.parish || res.region || '',
-      postcode: norm
-    }];
-  }
+  // Fallback: postcodes.io (single best-effort entry)
+  try{
+    const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
+    if(!r.ok) return [];
+    const data = await r.json();
+    if(data && data.status === 200 && data.result){
+      const res = data.result;
+      return [{
+        label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`,
+        address: '',
+        city: res.admin_district || res.parish || res.region || '',
+        postcode: norm
+      }];
+    }
+  }catch{}
   return [];
 }
+
 
 /* =================== Submit (Title+Year; manual ok) =================== */
 async function submitFilm(){
