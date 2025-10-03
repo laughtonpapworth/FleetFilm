@@ -541,86 +541,102 @@ function showPicker(items){
   });
 }
 
-// --- DROP-IN: replace your existing fetchAddressesByPostcode with this ---
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
-  const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
+  const domainToken = cfg.getAddressDomainToken || cfg.getaddressDomainToken;
+  const apiKey      = cfg.getAddressIoKey || cfg.getaddressIoKey;
   const norm = (pc||'').trim().toUpperCase();
-  if(!norm) return [];
+  if (!norm) return [];
 
-  // Helper to build a nice label
-  const makeLabel = (a) => {
-    const bits = [a.house, a.street, a.town, a.postcode].filter(Boolean);
-    return bits.join(', ');
+  // Small helper for easy debugging in your console:
+  const debug = (...args) => console.log('[getaddress]', ...args);
+
+  // Builder: normalise GA expand=true result into our fields
+  const mapGA = (a) => {
+    const house = String(
+      a.sub_building_name || a.building_name || a.building_number || a.line_1 || ''
+    ).trim();
+    // Prefer thoroughfare; fall back to next best line
+    const street = String(
+      a.thoroughfare || a.line_2 || (a.line_1 && a.line_1 !== house ? a.line_1 : '') || ''
+    ).trim();
+    const town   = String(a.town_or_city || a.post_town || '').trim();
+    const county = String(a.county || a.county_name || a.county_or_unitary || '').trim();
+    const postcode = String(a.postcode || norm).toUpperCase();
+    const label = [house, street, town, postcode].filter(Boolean).join(', ');
+    return { house, street, town, county, postcode, label, address: [house, street].filter(Boolean).join(' ') };
   };
 
-  // --- Primary: getaddress.io (requires key) ---
-  if (key) {
+  // --- Preferred: Domain Token (no key exposure) ---
+  if (domainToken) {
+    const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&domain_token=${encodeURIComponent(domainToken)}`;
     try {
-      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
-      const r = await fetch(url);
-      if (r.status === 404) return []; // postcode not found
-      if (!r.ok) throw new Error('getaddress.io error');
-      const data = await r.json();
-
-      // data.addresses is an array of objects (when expand=true)
-      // See: building_number, building_name, sub_building_name, thoroughfare, line_1, line_2, town_or_city, county, postcode
-      const out = (data.addresses || []).map(a => {
-        // Heuristics to map to (house, street, town, county, postcode)
-        const houseCandidates = [
-          a.sub_building_name, a.building_name, a.building_number, a.thoroughfare_number, a.line_1
-        ].filter(Boolean);
-        const streetCandidates = [
-          a.thoroughfare, a.line_2, (a.line_1 && !houseCandidates.includes(a.line_1) ? a.line_1 : null)
-        ].filter(Boolean);
-
-        const house = String(houseCandidates[0] || '').trim();
-        const street = String(streetCandidates[0] || '').trim();
-        const town   = String(a.town_or_city || a.post_town || '').trim();
-        const county = String(a.county || a.county_name || a.county_or_unitary || '').trim();
-        const postcode = String(a.postcode || norm).toUpperCase();
-
-        return {
-          house, street, town, county, postcode,
-          label: makeLabel({house, street, town, postcode}),
-          address: [house, street].filter(Boolean).join(' ').trim()
-        };
-      });
-
-      return out;
-    } catch {
-      // fall through to postcodes.io
+      debug('calling with domain_token', { url });
+      const r = await fetch(url, { method: 'GET' });
+      debug('status', r.status);
+      if (r.status === 404) return [];           // postcode not found
+      if (r.status === 401 || r.status === 403) { // token/host mismatch
+        debug('auth error; check Domain Token host matches your site');
+        // fall through to API key or fallback
+      } else if (!r.ok) {
+        debug('non-OK response; will try fallback');
+      } else {
+        const data = await r.json();
+        const arr = Array.isArray(data.addresses) ? data.addresses.map(mapGA) : [];
+        return arr;
+      }
+    } catch (e) {
+      debug('network error (token path):', e);
+      // fall through
     }
   }
 
-  // --- Fallback: postcodes.io (metadata-only; create a single best-effort entry) ---
-  try{
+  // --- Secondary: API Key (works but exposes key in browser) ---
+  if (apiKey) {
+    const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(apiKey)}`;
+    try {
+      debug('calling with api-key', { urlMasked: url.replace(apiKey, '***') });
+      const r = await fetch(url, { method: 'GET' });
+      debug('status', r.status);
+      if (r.status === 404) return []; // postcode not found (valid, no results)
+      if (!r.ok) {
+        debug('non-OK response using api-key; will try fallback');
+      } else {
+        const data = await r.json();
+        const arr = Array.isArray(data.addresses) ? data.addresses.map(mapGA) : [];
+        return arr;
+      }
+    } catch (e) {
+      debug('network error (api-key path):', e);
+      // fall through
+    }
+  }
+
+  // --- Fallback: postcodes.io (metadata only) ---
+  try {
     const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
-    if(!r.ok) return [];
+    if (!r.ok) return [];
     const data = await r.json();
-    if(data && data.status === 200 && data.result){
+    if (data && data.status === 200 && data.result) {
       const res = data.result;
       const town   = (res.admin_district || res.post_town || res.parish || res.region || res.country || '').trim();
-      const county = (res.admin_county || res.nuts || res.region || '').trim();
-      const postcode = norm;
-      // No house/street info from postcodes.io – user can type those
+      const county = (res.admin_county || res.region || '').trim();
       const item = {
-        house: '',
-        street: '',
-        town,
-        county,
-        postcode,
-        label: `${postcode}${town ? ' ('+town+')' : ''}`,
+        house: '', street: '', town, county,
+        postcode: norm,
+        label: `${norm}${town ? ' (' + town + ')' : ''}`,
         address: ''
       };
+      debug('fallback postcodes.io result', item);
       return [item];
     }
-  }catch{
-    // ignore
+  } catch (e) {
+    debug('fallback error:', e);
   }
 
   return [];
 }
+
 
 
 /* =================== Submit (Title+Year; manual ok) =================== */
