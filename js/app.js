@@ -541,84 +541,87 @@ function showPicker(items){
   });
 }
 
-/* ===== Address lookup ===== */
-/* ===== Address lookup (robust getaddress.io, with graceful 404) ===== */
+// --- DROP-IN: replace your existing fetchAddressesByPostcode with this ---
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
   const key = cfg.getAddressIoKey || cfg.getaddressIoKey; // allow either spelling
   const norm = (pc||'').trim().toUpperCase();
   if(!norm) return [];
 
-  // If you have a getaddress.io key, use their /find endpoint without "expand=true".
-  // Many accounts 404 on ?expand=true even for valid postcodes.
+  // Helper to build a nice label
+  const makeLabel = (a) => {
+    const bits = [a.house, a.street, a.town, a.postcode].filter(Boolean);
+    return bits.join(', ');
+  };
+
+  // --- Primary: getaddress.io (requires key) ---
   if (key) {
-    const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?api-key=${encodeURIComponent(key)}`;
-    const r = await fetch(url);
-    if (r.status === 404) {
-      // Postcode not found (or not available on current plan)
-      console.warn('getaddress.io 404 for postcode', norm);
-      return [];
+    try {
+      const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(key)}`;
+      const r = await fetch(url);
+      if (r.status === 404) return []; // postcode not found
+      if (!r.ok) throw new Error('getaddress.io error');
+      const data = await r.json();
+
+      // data.addresses is an array of objects (when expand=true)
+      // See: building_number, building_name, sub_building_name, thoroughfare, line_1, line_2, town_or_city, county, postcode
+      const out = (data.addresses || []).map(a => {
+        // Heuristics to map to (house, street, town, county, postcode)
+        const houseCandidates = [
+          a.sub_building_name, a.building_name, a.building_number, a.thoroughfare_number, a.line_1
+        ].filter(Boolean);
+        const streetCandidates = [
+          a.thoroughfare, a.line_2, (a.line_1 && !houseCandidates.includes(a.line_1) ? a.line_1 : null)
+        ].filter(Boolean);
+
+        const house = String(houseCandidates[0] || '').trim();
+        const street = String(streetCandidates[0] || '').trim();
+        const town   = String(a.town_or_city || a.post_town || '').trim();
+        const county = String(a.county || a.county_name || a.county_or_unitary || '').trim();
+        const postcode = String(a.postcode || norm).toUpperCase();
+
+        return {
+          house, street, town, county, postcode,
+          label: makeLabel({house, street, town, postcode}),
+          address: [house, street].filter(Boolean).join(' ').trim()
+        };
+      });
+
+      return out;
+    } catch {
+      // fall through to postcodes.io
     }
-    if (!r.ok) {
-      // Handle 401/429/etc. by bailing out to the fallback
-      console.warn('getaddress.io error', r.status);
-      return [];
-    }
-
-    // Example payload (non-expanded): { "postcode":"GU51 3RA", "addresses":[ "1 Street, Area, Town, County", ... ] }
-    const data = await r.json();
-    const arr = Array.isArray(data.addresses) ? data.addresses : [];
-    return arr.map((line) => {
-      const parts = String(line).split(',').map(s => s.trim()).filter(Boolean);
-      // Heuristic split: first part often "number street"
-      const first = parts[0] || '';
-      const m = first.match(/^(\d+\w*)\s+(.*)$/); // capture house number + street
-      const number = m ? m[1] : '';
-      const street = m ? m[2] : first;
-
-      // Remaining parts → locality/town/county (best-effort)
-      const locality = parts[1] || '';
-      const town     = parts[2] || locality;
-      const county   = parts[3] || '';
-
-      return {
-        // label shown in the picker
-        label: [number, street, locality || town, county, norm].filter(Boolean).join(', '),
-
-        // fields you can use to prefill inputs
-        number,
-        street,
-        town: town || locality,
-        county,
-        postcode: norm,
-        // keep a full-line string too if you need it
-        address: [number, street].filter(Boolean).join(' ')
-      };
-    });
   }
 
-  // ---- Fallback: postcodes.io (doesn't give full addresses) ----
+  // --- Fallback: postcodes.io (metadata-only; create a single best-effort entry) ---
   try{
     const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
     if(!r.ok) return [];
     const data = await r.json();
     if(data && data.status === 200 && data.result){
       const res = data.result;
-      return [{
-        label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`,
-        number: '',
+      const town   = (res.admin_district || res.post_town || res.parish || res.region || res.country || '').trim();
+      const county = (res.admin_county || res.nuts || res.region || '').trim();
+      const postcode = norm;
+      // No house/street info from postcodes.io – user can type those
+      const item = {
+        house: '',
         street: '',
-        town: res.admin_district || res.parish || res.region || '',
-        county: res.region || '',
-        postcode: norm,
+        town,
+        county,
+        postcode,
+        label: `${postcode}${town ? ' ('+town+')' : ''}`,
         address: ''
-      }];
+      };
+      return [item];
     }
-  }catch(e){
-    console.warn('postcodes.io fallback failed', e);
+  }catch{
+    // ignore
   }
+
   return [];
 }
+
 
 /* =================== Submit (Title+Year; manual ok) =================== */
 async function submitFilm(){
