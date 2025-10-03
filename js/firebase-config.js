@@ -8,10 +8,11 @@ window.__FLEETFILM__CONFIG = {
   storageBucket: "fleetfilm-8829e.appspot.com",
   messagingSenderId: "464150585740",
   appId: "1:464150585740:web:a047ae9b57ce149bea76a9",
-
+  getAddressIoKey: 'Ll_nRO8O302rbH7q5roJzA47908',   // if you have one
+  omdbApiKey: "3e90e2e2",
   // Optional keys used by your app:
-  omdbApiKey: "3e90e2e2",        // if you have one
-  getaddressIoKey: "Ll_nRO8O302rbH7q5roJzA47908"    // if you have one
+          // if you have one
+ 
 };
 
 // 2) Hard-init Firebase immediately so redirect completion can run on mobile
