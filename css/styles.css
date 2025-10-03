@@ -275,6 +275,26 @@ footer{
   .nav{ display:none; }
   .nav.nav--open{ display:flex; }
 
+  /* Make value column wrap sanely everywhere */
+.kv > div:nth-child(2n){
+  overflow-wrap:anywhere; word-break:break-word; white-space:normal;
+}
+
+/* On phones, force split cards to stack and give breathing room */
+@media (max-width:760px){
+  .detail-card .item.item--split{ grid-template-columns:1fr !important; }
+  .detail-card .item-left{ align-items:flex-start; }
+  .detail-card .kv{ grid-template-columns:110px 1fr; }
+  .item-title{ font-size:20px; line-height:1.2; }
+}
+
+/* Keep header from overlapping content on small screens */
+@media (max-width:760px){
+  .header{ position:sticky; top:0; }
+  main.container{ padding-top:6px; }
+}
+
+
   /* Tab bar: only shows when JS removes .hidden */
   .mobile-tabbar:not(.hidden){ display:grid; }
 
