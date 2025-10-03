@@ -294,6 +294,17 @@ footer{
   main.container{ padding-top:6px; }
 }
 
+  /* Calendar – make 7-day grid scroll on phones so text can wrap normally */
+@media (max-width:760px){
+  .cal-grid{
+    grid-template-columns: repeat(7, minmax(120px, 1fr));
+    overflow-x: auto;
+  }
+  .cal-cell{ min-width:120px; }
+  .cal-pill{ line-height:1.2; white-space:normal; word-break:break-word; }
+}
+
+
 
   /* Tab bar: only shows when JS removes .hidden */
   .mobile-tabbar:not(.hidden){ display:grid; }
