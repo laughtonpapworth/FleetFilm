@@ -1434,21 +1434,20 @@ async function adminAction(action, filmId){
 /* =================== Boot =================== */
 async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
-  if(!ok){
-    alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
-    return;
-  }
+  if(!ok){ alert('Missing Firebase config'); return; }
 
+  try { initFirebaseOnce(); } catch(e){ alert('Missing Firebase config'); return; }
+
+  // ✅ Complete Google redirect ASAP (mobile needs this)
   try {
-    initFirebaseOnce();
-  } catch (e) {
-    alert('Missing Firebase config. Check js/firebase-config.js.');
-    return;
+    await firebase.auth().getRedirectResult();
+  } catch (err) {
+    console.warn('Redirect error:', err && err.message);
   }
 
   attachHandlers();
 
-  auth.onAuthStateChanged(async (u) => {
+  firebase.auth().onAuthStateChanged(async (u) => {
     state.user = u;
     if(!u){
       showSignedIn(false);
