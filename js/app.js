@@ -971,7 +971,7 @@ async function loadViewing(){
   });
 }
 
-/* ---------- Add Location Modal ---------- */
+// --- DROP-IN: replace your showAddLocationModal with this version ---
 function showAddLocationModal(prefill={}){
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
@@ -1028,6 +1028,7 @@ function showAddLocationModal(prefill={}){
     const close = (res)=>{ document.body.removeChild(overlay); resolve(res||null); };
     $('#loc-cancel').onclick = ()=>close(null);
 
+    // --- POSTCODE LOOKUP -> clickable list that fills inputs ---
     $('#loc-lookup').onclick = async ()=>{
       const pc = ($('#loc-postcode').value || '').trim();
       if(!pc){ toast('Enter a postcode first'); return; }
@@ -1035,53 +1036,61 @@ function showAddLocationModal(prefill={}){
         const results = await fetchAddressesByPostcode(pc);
         const list = $('#loc-options');
         list.innerHTML = '';
-        if(!results.length){ list.innerHTML = '<div class="notice">No addresses found for that postcode.</div>'; return; }
+        if(!results.length){
+          list.innerHTML = '<div class="notice">No addresses found for that postcode.</div>';
+          return;
+        }
 
-        // Render as selectable list
         results.forEach(a=>{
           const b = document.createElement('button');
           b.className = 'btn btn-ghost';
           b.type = 'button';
           b.style.width = '100%';
           b.textContent = a.label;
+          // ⬇ This is the fill-in click you asked about
           b.onclick = ()=>{
-            $('#loc-house').value = a.house || '';
-            $('#loc-street').value = a.street || '';
-            $('#loc-town').value = a.town || '';
-            $('#loc-county').value = a.county || '';
+            $('#loc-house').value    = a.house || '';
+            $('#loc-street').value   = a.street || '';
+            $('#loc-town').value     = a.town || '';
+            $('#loc-county').value   = a.county || '';
             $('#loc-postcode').value = a.postcode || pc.toUpperCase();
           };
           list.appendChild(b);
         });
       }catch{
-        toast('Lookup failed (network or API key).');
+        toast('Lookup failed (network or API key issue).');
       }
     };
 
+    // --- SAVE (writes granular fields + legacy combined address) ---
     $('#loc-save').onclick = async ()=>{
-      const name = ($('#loc-name').value||'').trim();
-      const house = ($('#loc-house').value||'').trim();
-      const street = ($('#loc-street').value||'').trim();
-      const town = ($('#loc-town').value||'').trim();
-      const county = ($('#loc-county').value||'').trim();
+      const name     = ($('#loc-name').value||'').trim();
+      const house    = ($('#loc-house').value||'').trim();
+      const street   = ($('#loc-street').value||'').trim();
+      const town     = ($('#loc-town').value||'').trim();
+      const county   = ($('#loc-county').value||'').trim();
       const postcode = ($('#loc-postcode').value||'').trim().toUpperCase();
 
       if(!name){ toast('Location Name is required.'); return; }
 
-      // Keep old fields for compatibility + store the new granular ones
       const addressCombined = [house, street].filter(Boolean).join(' ').trim();
+      const payload = {
+        name,
+        // legacy fields
+        address: addressCombined,
+        city: town,
+        postcode,
+        // granular
+        house, street, town, county
+      };
 
       try{
         if(prefill.id){
-          await db.collection('locations').doc(prefill.id).update({
-            name, address: addressCombined, postcode, city: town,
-            house, street, town, county
-          });
+          await db.collection('locations').doc(prefill.id).update(payload);
           close({ id: prefill.id, name });
         }else{
           const ref = await db.collection('locations').add({
-            name, address: addressCombined, postcode, city: town,
-            house, street, town, county,
+            ...payload,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           close({ id: ref.id, name });
@@ -1099,6 +1108,7 @@ function showAddLocationModal(prefill={}){
     }
   });
 }
+
 
 /* =================== CALENDAR PAGE =================== */
 async function loadCalendar(){
