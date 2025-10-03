@@ -550,18 +550,19 @@ async function fetchAddressesByPostcode(pc) {
   console.log('[nominatim] Attempting lookup for:', norm);
 
   try {
-    // Nominatim search with postcode, restricted to UK
+    // Nominatim search with postcode, restricted to UK, building-level zoom
     const params = new URLSearchParams({
       q: norm,
       format: 'json',
       addressdetails: 1,
       countrycodes: 'gb',
-      limit: 50 // Reasonable limit for addresses in a postcode
+      zoom: 18, // Building-level detail
+      limit: 50 // Reasonable limit for addresses
     });
     const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
     console.log('[nominatim] Fetching:', url);
     const r = await fetch(url, {
-      headers: { 'User-Agent': 'FleetFilmApp/1.0 (contact: your-email@example.com)' } // Required by Nominatim
+      headers: { 'User-Agent': 'FleetFilmApp/1.0 (contact: your-contact-email@example.com)' } // Replace with your email
     });
     if (!r.ok) {
       const txt = await r.text().catch(() => '');
@@ -572,8 +573,8 @@ async function fetchAddressesByPostcode(pc) {
     console.log('[nominatim] Response:', data);
 
     if (!Array.isArray(data) || data.length === 0) {
-      console.warn('[nominatim] No addresses found');
-      // Fallback to basic postcode info
+      console.warn('[nominatim] No results found');
+      // Fallback to Postcodes.io for town/county
       try {
         const pcUrl = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
         console.log('[postcodes.io] Fallback fetching:', pcUrl);
@@ -592,7 +593,7 @@ async function fetchAddressesByPostcode(pc) {
             county: county,
             postcode: norm,
             address: '',
-            label: `${norm}${town || county ? ` (${town || county})` : ''}`
+            label: town || county ? `${town || county}, ${norm}` : norm
           }];
         }
       } catch (e) {
@@ -601,10 +602,10 @@ async function fetchAddressesByPostcode(pc) {
       return [];
     }
 
-    // Filter and normalize Nominatim results
+    // Normalize Nominatim results
     const addresses = data
-      .filter(item => item.address && (item.address.house_number || item.address.road))
       .map(item => {
+        if (!item.address) return null;
         const addr = item.address;
         const house = addr.house_number || addr.building || '';
         const street = addr.road || addr.street || '';
@@ -623,18 +624,26 @@ async function fetchAddressesByPostcode(pc) {
           label: labelParts.join(', ')
         };
       })
-      .filter(a => a.address); // Only include entries with a valid address
+      .filter(a => a && (a.house || a.street || a.address)); // Include entries with at least house or street
 
     console.log('[nominatim] Normalized addresses:', addresses);
-    return addresses.length > 0 ? addresses : [{
-      house: '',
-      street: '',
-      town: data[0].address.town || data[0].address.city || data[0].address.village || '',
-      county: data[0].address.county || data[0].address.state || '',
-      postcode: norm,
-      address: '',
-      label: `${norm}${data[0].address.town || data[0].address.county ? ` (${data[0].address.town || data[0].address.county})` : ''}`
-    }];
+
+    // If no specific addresses (only town/county), return a single fallback entry
+    if (addresses.length === 0) {
+      const town = data[0].address.town || data[0].address.city || data[0].address.village || '';
+      const county = data[0].address.county || data[0].address.state || '';
+      return [{
+        house: '',
+        street: '',
+        town: town,
+        county: county,
+        postcode: norm,
+        address: '',
+        label: town || county ? `${town || county}, ${norm}` : norm
+      }];
+    }
+
+    return addresses;
 
   } catch (e) {
     console.error('[nominatim] Lookup error:', e.message);
@@ -710,19 +719,16 @@ function showAddLocationModal(prefill = {}) {
 
       try {
         const results = await fetchAddressesByPostcode(pc);
-        console.log('[showAddLocationModal] Lookup results:', results); // Debug
+        console.log('[showAddLocationModal] Lookup results:', results);
         listEl.innerHTML = '';
 
-        if (!results.length || (results.length === 1 && !results[0].address)) {
-          listEl.innerHTML = '<div class="notice">No specific addresses found. Enter details manually below.</div>';
-          // Populate town/county if available
-          if (results.length === 1) {
-            $('#loc-town').value = results[0].town || '';
-            $('#loc-county').value = results[0].county || '';
-            $('#loc-postcode').value = results[0].postcode || pc.toUpperCase();
-            $('#loc-house').value = '';
-            $('#loc-street').value = '';
-          }
+        if (!results.length) {
+          listEl.innerHTML = '<div class="notice">No results found. Enter details manually below.</div>';
+          $('#loc-house').value = '';
+          $('#loc-street').value = '';
+          $('#loc-town').value = '';
+          $('#loc-county').value = '';
+          $('#loc-postcode').value = pc.toUpperCase();
           return;
         }
 
@@ -732,19 +738,23 @@ function showAddLocationModal(prefill = {}) {
           addressMap.set(`addr-${index}`, a);
         });
 
-        // Render buttons with unique data-addr-id
+        // Render buttons for all results, including partial ones
         results.forEach((a, index) => {
-          if (!a.address) return; // Skip fallback entries
-          console.log('[showAddLocationModal] Rendering address:', a.label); // Debug
+          console.log('[showAddLocationModal] Rendering address:', a.label);
           const b = document.createElement('button');
           b.className = 'btn btn-ghost';
           b.type = 'button';
           b.style.width = '100%';
           b.style.textAlign = 'left';
           b.textContent = a.label;
-          b.dataset.addrId = `addr-${index}`; // Unique ID for this address
+          b.dataset.addrId = `addr-${index}`;
           listEl.appendChild(b);
         });
+
+        // If only a fallback result (no house/street), show manual entry message
+        if (results.length === 1 && !results[0].address) {
+          listEl.innerHTML = '<div class="notice">No specific addresses found for this postcode. Select the area below or enter details manually.</div>' + listEl.innerHTML;
+        }
 
         // Event delegation for address buttons
         listEl.addEventListener('click', (e) => {
@@ -753,7 +763,7 @@ function showAddLocationModal(prefill = {}) {
           const addrId = btn.dataset.addrId;
           const address = addressMap.get(addrId);
 
-          console.log('[showAddLocationModal] Address clicked:', address); // Debug
+          console.log('[showAddLocationModal] Address clicked:', address);
 
           if (!address) {
             console.error('[showAddLocationModal] Address not found for ID:', addrId);
@@ -781,7 +791,7 @@ function showAddLocationModal(prefill = {}) {
             inputs.town.value = address.town || '';
             inputs.county.value = address.county || '';
             inputs.postcode.value = address.postcode || pc.toUpperCase();
-            console.log('[showAddLocationModal] Fields populated:', address); // Debug
+            console.log('[showAddLocationModal] Fields populated:', address);
           } catch (e) {
             console.error('[showAddLocationModal] Error setting fields:', e.message);
             toast('Error setting address fields');
