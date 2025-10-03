@@ -542,93 +542,60 @@ function showPicker(items){
 }
 
 async function fetchAddressesByPostcode(pc) {
-  const cfg = window.__FLEETFILM__CONFIG || {};
-  const domainToken = cfg.getAddressDomainToken || '';
-  const apiKey = cfg.getAddressIoKey || cfg.getaddressIoKey || '';
-
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
   if (!norm) return [];
 
-  // Helper to hit getaddress.io and normalize results to our fields
-  const callGetAddress = async (url) => {
-    const r = await fetch(url, { method: 'GET' });
+  console.log('[postcodes.io] Attempting lookup for:', norm); // Debug log
+
+  try {
+    const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
+    console.log('[postcodes.io] Fetching:', url); // Debug log
+    const r = await fetch(url);
     if (!r.ok) {
       const txt = await r.text().catch(() => '');
-      throw new Error(`getaddress ${r.status}: ${txt || r.statusText}`);
+      console.error(`[postcodes.io] Failed: ${r.status} ${txt || r.statusText}`);
+      return [];
     }
     const data = await r.json();
-    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
-    
-    // Fetch full details for each suggestion using the suggestion's id
-    const addresses = await Promise.all(suggestions.map(async (s) => {
-      const detailUrl = `https://api.getaddress.io/get/${s.id}?api-key=${encodeURIComponent(apiKey)}`;
-      try {
-        const detailRes = await fetch(detailUrl);
-        if (!detailRes.ok) return null;
-        const detail = await detailRes.json();
-        return {
-          house: detail.building_name || detail.building_number || '',
-          street: detail.thoroughfare || detail.line_2 || '',
-          town: detail.town_or_city || detail.post_town || '',
-          county: detail.county || '',
-          postcode: detail.postcode || norm,
-          address: [detail.building_name || detail.building_number || '', detail.thoroughfare || detail.line_2 || ''].filter(Boolean).join(' '),
-          label: s.address // Use the suggestion's address as the display label
-        };
-      } catch (e) {
-        console.warn(`[getaddress] Failed to fetch details for id ${s.id}:`, e.message);
-        return null;
-      }
-    }));
+    console.log('[postcodes.io] Response:', data); // Debug log
 
-    return addresses.filter(a => a !== null); // Filter out any failed detail fetches
-  };
-
-  // 1) Try Domain Token (browser-safe)
-  if (domainToken) {
-    try {
-      const url = `https://api.getaddress.io/autocomplete/${encodeURIComponent(norm)}?all=true&domain_token=${encodeURIComponent(domainToken)}`;
-      const list = await callGetAddress(url);
-      if (list.length) return list;
-    } catch (e) {
-      console.warn('[getaddress] domain token path failed:', e.message);
+    if (data.status !== 200 || !data.result) {
+      console.warn('[postcodes.io] Invalid postcode or no data');
+      return [];
     }
-  }
 
-  // 2) Fallback to API key
-  if (apiKey) {
-    try {
-      const url = `https://api.getaddress.io/autocomplete/${encodeURIComponent(norm)}?all=true&api-key=${encodeURIComponent(apiKey)}`;
-      const list = await callGetAddress(url);
-      if (list.length) return list;
-    } catch (e) {
-      console.warn('[getaddress] api key path failed:', e.message);
-    }
-  }
+    const res = data.result;
+    const addresses = res.addresses || []; // Array of full address lines, e.g., ["1 Connaught Road", "2 Connaught Road"]
 
-  // 3) Last resort: postcodes.io (town/county only, no address list)
-  try {
-    const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
-    if (r.ok) {
-      const data = await r.json();
-      if (data && data.status === 200 && data.result) {
-        const res = data.result;
-        return [{
-          house: '',
-          street: '',
-          town: res.admin_district || res.parish || res.region || '',
-          county: res.ccg || res.region || '',
-          postcode: norm,
-          address: '',
-          label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`
-        }];
-      }
-    }
+    // Normalize each address to your app's format
+    const addressList = addresses.map(addrLine => {
+      // Parse address line: e.g., "1 Connaught Road" -> house="1", street="Connaught Road"
+      const parts = addrLine.trim().split(' ', 2); // Split on first two spaces max
+      const house = parts[0] || '';
+      const street = parts.slice(1).join(' ') || '';
+
+      const town = res.admin_district || res.parish || '';
+      const county = res.region || res.county || ''; // Use region as county fallback
+
+      const labelParts = [house, street, town, county, norm].filter(Boolean);
+      return {
+        house: house,
+        street: street,
+        town: town,
+        county: county,
+        postcode: norm,
+        address: [house, street].filter(Boolean).join(' '),
+        label: labelParts.join(', ')
+      };
+    });
+
+    console.log('[postcodes.io] Normalized addresses:', addressList); // Debug log
+    return addressList;
+
   } catch (e) {
-    console.warn('[postcodes.io] lookup failed:', e.message);
+    console.error('[postcodes.io] Lookup error:', e.message);
+    return [];
   }
-
-  return [];
 }
 
 /* =================== Submit (Title+Year; manual ok) =================== */
