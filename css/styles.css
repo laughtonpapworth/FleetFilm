@@ -233,6 +233,21 @@ footer{
   white-space:normal; word-break:break-word; text-align:left; background:#fff;
   cursor:pointer;
 }
+/* Colorful, readable calendar pills */
+.cal-pill{
+  font-size:12px; font-weight:700;
+  border:1px solid var(--border);
+  border-radius:10px; padding:6px 8px; margin:3px 0;
+  display:block; white-space:normal; word-break:break-word; overflow-wrap:anywhere;
+  line-height:1.25; text-align:left; background:#fff;
+}
+
+/* auto colour rotation */
+.cal-pill.c0{ background:#eef2ff; border-color:#dbe3ff; }
+.cal-pill.c1{ background:#ecfdf5; border-color:#c9f5e2; }
+.cal-pill.c2{ background:#fff7ed; border-color:#ffe5c7; }
+.cal-pill.c3{ background:#fef2f2; border-color:#fde2e2; }
+
 
 /* ===== Mobile bottom tab bar ===== */
 .mobile-tabbar{
