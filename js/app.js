@@ -544,95 +544,102 @@ function showPicker(items){
 async function fetchAddressesByPostcode(pc) {
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
   if (!norm) {
-    console.warn('[postcodes.io] Empty or invalid postcode');
+    console.warn('[nominatim] Empty or invalid postcode');
     return [];
   }
-  console.log('[postcodes.io] Attempting lookup for:', norm);
+  console.log('[nominatim] Attempting lookup for:', norm);
 
-  // Try autocomplete endpoint first for address list
   try {
-    const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}/autocomplete`;
-    console.log('[postcodes.io] Fetching autocomplete:', url);
-    const r = await fetch(url);
+    // Nominatim search with postcode, restricted to UK
+    const params = new URLSearchParams({
+      q: norm,
+      format: 'json',
+      addressdetails: 1,
+      countrycodes: 'gb',
+      limit: 50 // Reasonable limit for addresses in a postcode
+    });
+    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+    console.log('[nominatim] Fetching:', url);
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'FleetFilmApp/1.0 (contact: your-email@example.com)' } // Required by Nominatim
+    });
     if (!r.ok) {
       const txt = await r.text().catch(() => '');
-      console.error(`[postcodes.io] Autocomplete failed: ${r.status} ${txt || r.statusText}`);
-      throw new Error('Autocomplete failed');
-    }
-    const data = await r.json();
-    console.log('[postcodes.io] Autocomplete response:', data);
-
-    if (data.status !== 200 || !data.result || !Array.isArray(data.result)) {
-      console.warn('[postcodes.io] No addresses in autocomplete response');
-    } else {
-      // Parse autocomplete results (array of address strings)
-      const addresses = data.result.map(addrLine => {
-        // Split address: e.g., "1 Connaught Road, Fleet, Hampshire, GU51 3RA"
-        const parts = addrLine.split(', ').map(p => p.trim());
-        const house = parts[0] || ''; // e.g., "1 Connaught Road" or "Flat 1"
-        const street = parts[1] || parts[0] || ''; // Fallback to first part if no street
-        const town = parts[2] || '';
-        const county = parts[3] || '';
-        const postcode = norm;
-
-        // Extract house number/name from first part (e.g., "1" from "1 Connaught Road")
-        const houseMatch = house.match(/^\d+\w?\b/); // Matches "1", "1A", etc.
-        const houseNum = houseMatch ? houseMatch[0] : house;
-        const streetName = houseMatch ? house.replace(houseMatch[0], '').trim() : house;
-
-        return {
-          house: houseNum,
-          street: streetName || street,
-          town: town,
-          county: county,
-          postcode: postcode,
-          address: [houseNum, streetName].filter(Boolean).join(' '),
-          label: addrLine
-        };
-      });
-
-      console.log('[postcodes.io] Normalized addresses:', addresses);
-      if (addresses.length > 0) return addresses;
-    }
-  } catch (e) {
-    console.error('[postcodes.io] Autocomplete error:', e.message);
-  }
-
-  // Fallback to single postcode lookup for town/county
-  try {
-    const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
-    console.log('[postcodes.io] Fetching single postcode:', url);
-    const r = await fetch(url);
-    if (!r.ok) {
-      const txt = await r.text().catch(() => '');
-      console.error(`[postcodes.io] Single postcode failed: ${r.status} ${txt || r.statusText}`);
+      console.error(`[nominatim] Failed: ${r.status} ${txt || r.statusText}`);
       return [];
     }
     const data = await r.json();
-    console.log('[postcodes.io] Single postcode response:', data);
+    console.log('[nominatim] Response:', data);
 
-    if (data.status === 200 && data.result) {
-      const res = data.result;
-      const town = res.admin_district || res.parish || res.region || '';
-      const county = res.region || res.county || '';
-      const addressObj = {
-        house: '',
-        street: '',
-        town: town,
-        county: county,
-        postcode: norm,
-        address: '',
-        label: `${norm} (${town || county || 'UK'})`
-      };
-      console.log('[postcodes.io] Fallback address:', addressObj);
-      return [addressObj];
+    if (!Array.isArray(data) || data.length === 0) {
+      console.warn('[nominatim] No addresses found');
+      // Fallback to basic postcode info
+      try {
+        const pcUrl = `https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`;
+        console.log('[postcodes.io] Fallback fetching:', pcUrl);
+        const pcR = await fetch(pcUrl);
+        if (!pcR.ok) throw new Error('Postcodes.io fallback failed');
+        const pcData = await pcR.json();
+        console.log('[postcodes.io] Fallback response:', pcData);
+        if (pcData.status === 200 && pcData.result) {
+          const res = pcData.result;
+          const town = res.admin_district || res.parish || '';
+          const county = res.region || res.county || '';
+          return [{
+            house: '',
+            street: '',
+            town: town,
+            county: county,
+            postcode: norm,
+            address: '',
+            label: `${norm}${town || county ? ` (${town || county})` : ''}`
+          }];
+        }
+      } catch (e) {
+        console.error('[postcodes.io] Fallback error:', e.message);
+      }
+      return [];
     }
-  } catch (e) {
-    console.error('[postcodes.io] Single postcode lookup error:', e.message);
-  }
 
-  console.warn('[postcodes.io] No addresses or fallback data available');
-  return [];
+    // Filter and normalize Nominatim results
+    const addresses = data
+      .filter(item => item.address && (item.address.house_number || item.address.road))
+      .map(item => {
+        const addr = item.address;
+        const house = addr.house_number || addr.building || '';
+        const street = addr.road || addr.street || '';
+        const town = addr.town || addr.city || addr.village || addr.suburb || '';
+        const county = addr.county || addr.state || '';
+        const postcode = addr.postcode ? addr.postcode.toUpperCase().replace(/\s+/g, '') : norm;
+
+        const labelParts = [house, street, town, county, postcode].filter(Boolean);
+        return {
+          house: house,
+          street: street,
+          town: town,
+          county: county,
+          postcode: postcode,
+          address: [house, street].filter(Boolean).join(' '),
+          label: labelParts.join(', ')
+        };
+      })
+      .filter(a => a.address); // Only include entries with a valid address
+
+    console.log('[nominatim] Normalized addresses:', addresses);
+    return addresses.length > 0 ? addresses : [{
+      house: '',
+      street: '',
+      town: data[0].address.town || data[0].address.city || data[0].address.village || '',
+      county: data[0].address.county || data[0].address.state || '',
+      postcode: norm,
+      address: '',
+      label: `${norm}${data[0].address.town || data[0].address.county ? ` (${data[0].address.town || data[0].address.county})` : ''}`
+    }];
+
+  } catch (e) {
+    console.error('[nominatim] Lookup error:', e.message);
+    return [];
+  }
 }
 
 function showAddLocationModal(prefill = {}) {
@@ -706,8 +713,16 @@ function showAddLocationModal(prefill = {}) {
         console.log('[showAddLocationModal] Lookup results:', results); // Debug
         listEl.innerHTML = '';
 
-        if (!results.length) {
-          listEl.innerHTML = '<div class="notice">No addresses found for that postcode. Enter details manually.</div>';
+        if (!results.length || (results.length === 1 && !results[0].address)) {
+          listEl.innerHTML = '<div class="notice">No specific addresses found. Enter details manually below.</div>';
+          // Populate town/county if available
+          if (results.length === 1) {
+            $('#loc-town').value = results[0].town || '';
+            $('#loc-county').value = results[0].county || '';
+            $('#loc-postcode').value = results[0].postcode || pc.toUpperCase();
+            $('#loc-house').value = '';
+            $('#loc-street').value = '';
+          }
           return;
         }
 
@@ -719,6 +734,7 @@ function showAddLocationModal(prefill = {}) {
 
         // Render buttons with unique data-addr-id
         results.forEach((a, index) => {
+          if (!a.address) return; // Skip fallback entries
           console.log('[showAddLocationModal] Rendering address:', a.label); // Debug
           const b = document.createElement('button');
           b.className = 'btn btn-ghost';
