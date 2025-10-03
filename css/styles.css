@@ -48,6 +48,32 @@ a:hover{opacity:.9}
   padding:6px 0; overflow-x:auto;
 }
 
+/* --- Header nav buttons (modern pill style) --- */
+.nav button{
+  appearance:none;
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--ink);
+  font-weight:800;
+  font-size:15px;
+  letter-spacing:.01em;
+  padding:10px 14px;
+  border-radius:999px;
+  cursor:pointer;
+  white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+  transition:transform .08s ease, box-shadow .12s ease, background .12s;
+}
+.nav button:hover{ box-shadow:0 4px 14px rgba(0,0,0,.08) }
+.nav button:active{ transform:translateY(1px) }
+.nav button.active{
+  background:var(--accent);
+  color:#fff;
+  border-color:var(--accent);
+  box-shadow:0 6px 18px rgba(201,138,0,.28);
+}
+
+
 /* Layout */
 .container{max-width:1100px; margin:16px auto; padding:0 16px 72px}
 .list{display:grid; gap:10px}
