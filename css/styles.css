@@ -304,6 +304,25 @@ footer{
   .cal-pill{ line-height:1.2; white-space:normal; word-break:break-word; }
 }
 
+  /* --- MENUS: one or the other, never both --- */
+
+/* Desktop ≥761px: show top nav, hide mobile tab bar and the Menu toggle */
+@media (min-width: 761px){
+  .nav{ display:flex !important; }
+  #nav-toggle{ display:none !important; }    /* hide the "Menu" button */
+  .mobile-tabbar{ display:none !important; }
+  .header{ position: sticky; top:0; }        /* sticky header is fine on desktop */
+}
+
+/* Mobile ≤760px: hide desktop nav + header pills; use only the bottom tab bar */
+@media (max-width: 760px){
+  .nav{ display:none !important; }           /* remove desktop nav completely */
+  .header-actions{ display:none !important; }/* hide "Menu" + "Sign out" pills */
+  .mobile-tabbar:not(.hidden){ display:grid; }
+  .header{ position: static !important; }    /* avoid overlapping content */
+}
+
+
 
 
   /* Tab bar: only shows when JS removes .hidden */
