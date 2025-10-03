@@ -108,9 +108,9 @@ function buildCalendarGridHTML(year, month, eventsByISO) {
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const items = eventsByISO[iso] || [];
-   const pills = items.map(({text, id}, i) =>
-  `<button class="cal-pill c${i%4}" data-film-id="${id}" style="display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
-).join('');
+    const pills = items.map(({text, id}, i) =>
+      `<button class="cal-pill c${i%4}" data-film-id="${id}" style="display:block;width:100%;text-align:left;cursor:pointer">${text}</button>`
+    ).join('');
     cells += `<div class="cal-cell"><div class="cal-day">${d}</div>${pills}</div>`;
   }
   return headers + cells;
@@ -339,19 +339,19 @@ function attachHandlers(){
     els.submitBtn.addEventListener('click', submitFilm);
   }
 
-// ---- Auth buttons (popup-first, redirect fallback) ----
-if (els.googleBtn) {
-  els.googleBtn.addEventListener('click', async () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    try {
-      // Try popup first (works on desktop and most mobile when triggered by a user click)
-      await auth.signInWithPopup(provider);
-    } catch (err) {
-      console.warn('Popup failed, falling back to redirect:', err && err.message);
-      await auth.signInWithRedirect(provider);
-    }
-  });
-}
+  // ---- Auth buttons (popup-first, redirect fallback) ----
+  if (els.googleBtn) {
+    els.googleBtn.addEventListener('click', async () => {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      try {
+        // Try popup first (works on desktop and most mobile when triggered by a user click)
+        await auth.signInWithPopup(provider);
+      } catch (err) {
+        console.warn('Popup failed, falling back to redirect:', err && err.message);
+        await auth.signInWithRedirect(provider);
+      }
+    });
+  }
 
   // Optional: surface redirect errors after returning from Google
   auth.getRedirectResult().catch(err => {
@@ -378,59 +378,59 @@ if (els.googleBtn) {
   // Hash router
   window.addEventListener('hashchange', routerFromHash);
 
- // Mobile bottom tabbar
-const mbar = document.getElementById('mobile-tabbar');
-if (mbar) {
-  mbar.addEventListener('click', (e)=>{
-    const btn = e.target.closest('button[data-view]');
-    if(!btn) return;
-    location.hash = btn.dataset.view;
-  });
-
-  const moreBtn = document.getElementById('tab-more');
-  if (moreBtn) {
-    moreBtn.addEventListener('click', () => {
-      // Build the "More" list = everything except the 4 quick ones
-      const rest = [
-        ['pending',   'Pending'],
-        ['basic',     'Basic'],
-        ['uk',        'UK Check'],
-        ['green',     'Green'],
-        ['nextprog',  'Next Programme'],
-        ['discarded', 'Discarded'],
-        ['archive',   'Archive'],
-        ['addresses', 'Addresses'],
-      ];
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay';
-      overlay.innerHTML = `
-        <div class="modal" role="dialog" aria-label="More pages">
-          <div class="modal-head">
-            <h2>More pages</h2>
-            <button class="btn btn-ghost" id="more-close">Close</button>
-          </div>
-          <div class="modal-list" id="more-list"></div>
-        </div>`;
-      document.body.appendChild(overlay);
-
-      const list = overlay.querySelector('#more-list');
-      rest.forEach(([view, label])=>{
-        const b = document.createElement('button');
-        b.className = 'btn';
-        b.textContent = label;
-        b.onclick = () => {
-          location.hash = view;           // navigate
-          document.body.removeChild(overlay); // auto-hide
-        };
-        list.appendChild(b);
-      });
-
-      overlay.querySelector('#more-close').onclick = () => {
-        document.body.removeChild(overlay);
-      };
+  // Mobile bottom tabbar
+  const mbar = document.getElementById('mobile-tabbar');
+  if (mbar) {
+    mbar.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-view]');
+      if(!btn) return;
+      location.hash = btn.dataset.view;
     });
+
+    const moreBtn = document.getElementById('tab-more');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        // Build the "More" list = everything except the 4 quick ones
+        const rest = [
+          ['pending',   'Pending'],
+          ['basic',     'Basic'],
+          ['uk',        'UK Check'],
+          ['green',     'Green'],
+          ['nextprog',  'Next Programme'],
+          ['discarded', 'Discarded'],
+          ['archive',   'Archive'],
+          ['addresses', 'Addresses'],
+        ];
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+          <div class="modal" role="dialog" aria-label="More pages">
+            <div class="modal-head">
+              <h2>More pages</h2>
+              <button class="btn btn-ghost" id="more-close">Close</button>
+            </div>
+            <div class="modal-list" id="more-list"></div>
+          </div>`;
+        document.body.appendChild(overlay);
+
+        const list = overlay.querySelector('#more-list');
+        rest.forEach(([view, label])=>{
+          const b = document.createElement('button');
+          b.className = 'btn';
+          b.textContent = label;
+          b.onclick = () => {
+            location.hash = view;           // navigate
+            document.body.removeChild(overlay); // auto-hide
+          };
+          list.appendChild(b);
+        });
+
+        overlay.querySelector('#more-close').onclick = () => {
+          document.body.removeChild(overlay);
+        };
+      });
+    }
   }
-}
 }
 
 /* =================== Filters (Pending) =================== */
@@ -1056,6 +1056,7 @@ function showAddLocationModal(prefill = {}) {
 
         // Render each address as a full-width button
         results.forEach(a => {
+          console.log('Address data:', a); // Debug: log each address object
           const b = document.createElement('button');
           b.className = 'btn btn-ghost';
           b.type = 'button';
@@ -1063,14 +1064,38 @@ function showAddLocationModal(prefill = {}) {
           b.style.textAlign = 'left';
           b.textContent = a.label;
 
-          // When clicked, fill the fields from this selected address
-          b.onclick = () => {
-            $('#loc-house').value    = a.house    || '';
-            $('#loc-street').value   = a.street   || '';
-            $('#loc-town').value     = a.town     || '';
-            $('#loc-county').value   = a.county   || '';
-            $('#loc-postcode').value = a.postcode || (pc.toUpperCase());
-          };
+          // Attach click handler
+          b.addEventListener('click', () => {
+            try {
+              console.log('Button clicked:', a.label); // Debug: confirm click
+              const houseInput = $('#loc-house');
+              const streetInput = $('#loc-street');
+              const townInput = $('#loc-town');
+              const countyInput = $('#loc-county');
+              const postcodeInput = $('#loc-postcode');
+
+              if (!houseInput || !streetInput || !townInput || !countyInput || !postcodeInput) {
+                console.error('One or more input elements not found:', {
+                  house: !!houseInput,
+                  street: !!streetInput,
+                  town: !!townInput,
+                  county: !!countyInput,
+                  postcode: !!postcodeInput
+                });
+                toast('Error: Could not find form fields');
+                return;
+              }
+
+              houseInput.value = a.house || '';
+              streetInput.value = a.street || '';
+              townInput.value = a.town || '';
+              countyInput.value = a.county || '';
+              postcodeInput.value = a.postcode || pc.toUpperCase();
+            } catch (e) {
+              console.error('Error setting address fields:', e.message);
+              toast('Error setting address fields');
+            }
+          });
 
           listEl.appendChild(b);
         });
@@ -1123,8 +1148,6 @@ function showAddLocationModal(prefill = {}) {
     }
   });
 }
-
-
 
 /* =================== CALENDAR PAGE =================== */
 async function loadCalendar(){
