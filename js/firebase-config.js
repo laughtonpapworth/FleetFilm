@@ -9,7 +9,7 @@ window.__FLEETFILM__CONFIG = {
   messagingSenderId: "464150585740",
   appId: "1:464150585740:web:a047ae9b57ce149bea76a9",
   getAddressIoKey: "Ll_nRO8O302rbH7q5roJzA47908",   // if you have one
-  getAddressDomainToken: "dtoken_hEDzcyiWMr29d_9lXHs78ecw0pF6Q4P4G0bkXcztoXw4dkgerrsti41eyhADhPZyhn4J_DUwC8pBLxe0gvr8wYRW_IZ8lIihzOckSHe538hyTX5EugmwUJwBw7AuH0d0kLuVcyv6SbC40OZJxLmaegonABQaihMJ9Prdq-6skLlJr0yrmWc5OVMHOYyhpAIbLx6B0hI_1iFBiGyUNm3d7ezoZRuXvpzr",
+  getAddressDomainToken: "dtoken_hEDzcyiWMr29d_9lXHs78ecw0pF6Q4P4G0bkXcztoXw4dkgerrsti41eyhADhPZyhn4J_DUwC8pBLxe0gvr8wYRW_IZ8lIihzOckSHe538gkcwB05z-gGl1oKCkonCW00c5O4NBUPk9s9Sc-5BDfHJPHxrq0AfRqeAzBRy8C06NoLZw4Srsc6zhep0E9LZp_Tv5IOznsZsbwURVrLxCWPZACFMZCIWfH55A4k_6-r-Y",
   omdbApiKey: "3e90e2e2",
   // Optional keys used by your app:
           // if you have one
