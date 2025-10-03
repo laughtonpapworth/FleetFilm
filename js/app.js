@@ -556,17 +556,18 @@ async function fetchAddressesByPostcode(pc) {
   // Check if API credentials are present
   if (!domainToken && !apiKey) {
     console.warn('[fetchAddressesByPostcode] No getaddress.io API key or domain token provided in __FLEETFILM__CONFIG');
+    alert('Address lookup requires a getaddress.io API key. Please configure it or enter details manually.');
   }
 
   // Helper to hit getaddress.io and normalize results
-  const callGetAddress = async (url, method) => {
+  const callGetAddress = async (url) => {
     console.log('[fetchAddressesByPostcode] Fetching from getaddress.io:', url);
     try {
       const r = await fetch(url, { method: 'GET' });
       if (!r.ok) {
         const txt = await r.text().catch(() => '');
         console.error(`[fetchAddressesByPostcode] getaddress.io failed: ${r.status} ${txt || r.statusText}`);
-        throw new Error(`getaddress.io request failed: ${txt || r.statusText}`);
+        throw new Error(`getaddress.io request failed: ${r.status} ${txt || r.statusText}`);
       }
       const data = await r.json();
       console.log('[fetchAddressesByPostcode] getaddress.io response:', data);
@@ -610,7 +611,7 @@ async function fetchAddressesByPostcode(pc) {
         return list;
       }
     } catch (e) {
-      console.warn('[getaddress] Domain token path failed:', e.message);
+      console.warn('[fetchAddressesByPostcode] Domain token path failed:', e.message);
     }
   }
 
@@ -624,7 +625,7 @@ async function fetchAddressesByPostcode(pc) {
         return list;
       }
     } catch (e) {
-      console.warn('[getaddress] API key path failed:', e.message);
+      console.warn('[fetchAddressesByPostcode] API key path failed:', e.message);
     }
   }
 
@@ -654,238 +655,145 @@ async function fetchAddressesByPostcode(pc) {
       console.warn('[fetchAddressesByPostcode] postcodes.io failed:', r.status, r.statusText);
     }
   } catch (e) {
-    console.warn('[postcodes.io] lookup failed:', e.message);
+    console.warn('[fetchAddressesByPostcode] postcodes.io lookup failed:', e.message);
   }
 
   console.warn('[fetchAddressesByPostcode] No addresses found for:', norm);
   return [];
 }
 
-/* =================== Submit (Title+Year; manual ok) =================== */
-async function submitFilm() {
-  const title = (els.title.value || '').trim();
-  const yearStr = (els.year.value || '').trim();
-  const year = parseInt(yearStr, 10);
-  if (!title) { alert('Title required'); return; }
-  if (!year || yearStr.length !== 4) { alert('Enter a 4-digit Year (e.g. 1994)'); return; }
-
-  if (!state.user) {
-    alert('Please sign in first.');
-    return;
-  }
-
-  let picked = null;
-  try {
-    const res = await omdbSearch(title, year);
-    const candidates = (res && res.Search) ? res.Search.filter(x => x.Type === 'movie') : [];
-    const choice = await showPicker(candidates);
-    if (choice.mode === 'cancel') { return; }
-    if (choice.mode === 'manual') { picked = null; }
-    if (choice.mode === 'pick' && choice.imdbID) { picked = await omdbDetailsById(choice.imdbID); }
-  } catch {
-    const ok = confirm('Could not reach OMDb. Add the film manually?');
-    if (!ok) return;
-  }
-
-  const base = {
-    title, year,
-    synopsis: '',
-    status: 'intake',
-    createdBy: state.user.uid,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    runtimeMinutes: null,
-    language: '',
-    ageRating: '',
-    ukAgeRating: '',
-    genre: '',
-    country: '',
-    hasDisk: false,
-    availability: '',
-    criteria: { basic_pass: false },
-    hasUkDistributor: null,
-    distStatus: '',
-    posterUrl: '',
-    imdbID: '',
-    // viewing scheduling
-    viewingDate: null, // Timestamp
-    viewingTime: '',
-    viewingLocationId: '',
-    viewingLocationName: '',
-    // green list timestamp
-    greenAt: null
-  };
-
-  if (picked) {
-    let runtimeMinutes = null;
-    if (picked.Runtime && /\d+/.test(picked.Runtime)) {
-      runtimeMinutes = parseInt(picked.Runtime.match(/\d+/)[0], 10);
-    }
-    base.posterUrl = (picked.Poster && picked.Poster !== 'N/A') ? picked.Poster : '';
-    base.ageRating = picked.Rated && picked.Rated !== 'N/A' ? picked.Rated : '';
-    base.ukAgeRating = mapMpaaToUk(base.ageRating);
-    base.genre = picked.Genre && picked.Genre !== 'N/A' ? picked.Genre : '';
-    base.language = picked.Language && picked.Language !== 'N/A' ? picked.Language : '';
-    base.country = picked.Country && picked.Country !== 'N/A' ? picked.Country : '';
-    base.imdbID = picked.imdbID || '';
-    if (runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
-    if (picked.Plot && picked.Plot !== 'N/A') base.synopsis = picked.Plot;
-    if (picked.Title) base.title = picked.Title;
-    if (picked.Year && /^\d{4}$/.test(picked.Year)) base.year = parseInt(picked.Year, 10);
-  }
-
-  try {
-    await db.collection('films').add(base);
-    if (els.submitMsg) {
-      els.submitMsg.textContent = 'Added to Pending Films.';
-      els.submitMsg.classList.remove('hidden');
-      setTimeout(() => els.submitMsg.classList.add('hidden'), 1800);
-    }
-    if (els.title) els.title.value = '';
-    if (els.year) els.year.value = '';
-    setView('pending');
-  } catch (e) { alert(e.message); }
-}
-
-/* =================== Fetch helpers =================== */
-async function fetchByStatus(status) {
-  const snap = await db.collection('films').where('status', '==', status).get();
-  const docs = snap.docs.sort((a, b) => {
-    const ta = a.data().createdAt && typeof a.data().createdAt.toMillis === 'function' ? a.data().createdAt.toMillis() : 0;
-    const tb = b.data().createdAt && typeof b.data().createdAt.toMillis === 'function' ? b.data().createdAt.toMillis() : 0;
-    return tb - ta;
-  });
-  return docs;
-}
-
-/* =================== Rendering helpers =================== */
-function pendingCard(f, actionsHtml = '') {
-  const year = f.year ? `(${f.year})` : '';
-  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  return `
-    <div class="card" data-film-card="${f.id || ''}">
-      <div class="item">
-        <div class="item-left">
-          ${poster}
-          <div class="item-title">${f.title} ${year}</div>
+/* =================== Address Modal =================== */
+function showAddLocationModal(prefill = {}) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-head">
+          <h2>${prefill.id ? 'Edit location' : 'Add new location'}</h2>
+          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
         </div>
-        <div class="item-right">${actionsHtml}</div>
-      </div>
-    </div>`;
-}
-
-function detailCard(f, actionsHtml = '') {
-  const year = f.year ? `(${f.year})` : '';
-  const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
-  return `
-    <div class="card detail-card" data-film-card="${f.id || ''}">
-      <div class="item item--split">
-        <div class="item-left">
-          ${poster}
-          <div>
-            <div class="item-title">${f.title} ${year}</div>
-            <div class="kv">
-              <div>Runtime:</div><div>${f.runtimeMinutes ?? '—'} min</div>
-              <div>Language:</div><div>${f.language || '—'}</div>
-              <div>UK Age Rating:</div><div>${f.ukAgeRating || '—'}</div>
-              <div>Genre:</div><div>${f.genre || '—'}</div>
-              <div>Country:</div><div>${f.country || '—'}</div>
-              <div>UK Distributor:</div><div>${f.hasUkDistributor === true ? 'Yes' : f.hasUkDistributor === false ? 'No' : '—'}</div>
-              <div>Disk available:</div><div>${f.hasDisk ? 'Yes' : 'No'}</div>
-              <div>Where to see:</div><div>${f.availability || '—'}</div>
-            </div>
+        <div class="form-grid">
+          <label class="span-2">Location Name (required)
+            <input id="loc-name" type="text" placeholder="e.g. Church Hall" value="${prefill.name || ''}" required>
+          </label>
+          <label>Postcode
+            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3RA" value="${prefill.postcode || ''}">
+          </label>
+          <div class="actions">
+            <button class="btn" id="loc-lookup">Lookup</button>
+          </div>
+          <div class="span-2" id="loc-options"></div>
+          <label>House / Name
+            <input id="loc-house" type="text" value="${prefill.house || ''}">
+          </label>
+          <label>Street
+            <input id="loc-street" type="text" value="${prefill.street || prefill.address || ''}">
+          </label>
+          <label>Town / City
+            <input id="loc-town" type="text" value="${prefill.town || prefill.city || ''}">
+          </label>
+          <label>County
+            <input id="loc-county" type="text" value="${prefill.county || ''}">
+          </label>
+          <div id="loc-msg" class="notice hidden span-2"></div>
+          <div class="actions span-2">
+            <div class="spacer"></div>
+            <button class="btn btn-primary" id="loc-save">${prefill.id ? 'Save changes' : 'Save'}</button>
           </div>
         </div>
-        <div class="item-right">${actionsHtml}</div>
-      </div>
-    </div>`;
-}
-
-/* =================== Pending Films =================== */
-async function loadPending() {
-  const docs = await fetchByStatus('intake');
-  let films = docs.map(d => ({ id: d.id, ...d.data() }));
-  if (filterState.q) { films = films.filter(x => (x.title || '').toLowerCase().includes(filterState.q)); }
-
-  els.pendingList.innerHTML = '';
-  if (!films.length) { els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
-
-  films.forEach(f => {
-    const actions = `
-      <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
-      <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
-      <button class="btn" data-archive="${f.id}">Archive</button>`;
-    els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
-  });
-
-  els.pendingList.querySelectorAll('button[data-next]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.next;
-      const ref = db.collection('films').doc(id);
-      await ref.update({ status: 'review_basic' });
-      loadPending();
-    });
-  });
-
-  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.discard;
-      await db.collection('films').doc(id).update({ status: 'discarded' });
-      loadPending();
-    });
-  });
-
-  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.archive;
-      await db.collection('films').doc(id).update({ status: 'archived', archivedFrom: 'intake' });
-      loadPending();
-    });
-  });
-
-  setupPendingFilters();
-}
-
-/* =================== BASIC =================== */
-async function loadBasic() {
-  const docs = await fetchByStatus('review_basic');
-  els.basicList.innerHTML = '';
-  if (!docs.length) { els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
-  docs.forEach(doc => {
-    const f = { id: doc.id, ...doc.data() };
-    const form = `
-      <div class="form-grid">
-        <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
-        <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
-        <label>UK Age Rating<input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, NR" /></label>
-        <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
-        <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
-        <label>Disk Available?
-          <select data-edit="hasDisk" data-id="${f.id}">
-            <option value="false" ${f.hasDisk ? '' : 'selected'}>No</option>
-            <option value="true" ${f.hasDisk ? 'selected' : ''}>Yes</option>
-          </select>
-        </label>
-        <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
-        <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
-        <div class="actions span-2">
-          <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → Viewing</button>
-          <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
-        </div>
       </div>`;
-    els.basicList.insertAdjacentHTML('beforeend', detailCard(f, form));
-  });
-  els.basicList.querySelectorAll('[data-edit]').forEach(inp => {
-    inp.addEventListener('change', async () => {
-      const id = inp.dataset.id;
-      let val = inp.value;
-      const field = inp.dataset.edit;
-      if (field === 'runtimeMinutes') val = parseInt(val || '0', 10) || null;
-      if (field === 'hasDisk') val = (val === 'true');
-      await db.collection('films').doc(id).update({ [field]: val });
-    });
-  });
-  els.basicList.querySelectorAll('button[data-id]').forEach(b => {
-    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
+    document.body.appendChild(overlay);
+
+    const $ = sel => overlay.querySelector(sel);
+    const close = (res) => { document.body.removeChild(overlay); resolve(res || null); };
+
+    $('#loc-cancel').onclick = () => close(null);
+
+    // Lookup click: fetch + render suggestions
+    $('#loc-lookup').onclick = async () => {
+      const pc = ($('#loc-postcode').value || '').trim();
+      if (!pc) { toast('Enter a postcode first'); return; }
+
+      const listEl = $('#loc-options');
+      listEl.innerHTML = '<div class="notice">Searching…</div>';
+
+      try {
+        const results = await fetchAddressesByPostcode(pc);
+        listEl.innerHTML = '';
+
+        if (!results.length) {
+          listEl.innerHTML = '<div class="notice">No addresses found for this postcode.</div>';
+          toast('No addresses found. Try another postcode or enter details manually.');
+          return;
+        }
+
+        results.forEach(a => {
+          const b = document.createElement('button');
+          b.className = 'btn btn-ghost';
+          b.type = 'button';
+          b.style.width = '100%';
+          b.style.textAlign = 'left';
+          b.textContent = a.label;
+          b.onclick = () => {
+            $('#loc-house').value = a.house || '';
+            $('#loc-street').value = a.street || '';
+            $('#loc-town').value = a.town || '';
+            $('#loc-county').value = a.county || '';
+            $('#loc-postcode').value = a.postcode || pc.toUpperCase();
+            listEl.innerHTML = ''; // Clear suggestions after selection
+          };
+          listEl.appendChild(b);
+        });
+      } catch (e) {
+        console.warn('[showAddLocationModal] Lookup error:', e.message);
+        listEl.innerHTML = '<div class="notice">Lookup failed (check API key or network).</div>';
+        toast('Lookup failed. Check your API key or enter details manually.');
+      }
+    };
+
+    // Save
+    $('#loc-save').onclick = async () => {
+      const name = ($('#loc-name').value || '').trim();
+      const house = ($('#loc-house').value || '').trim();
+      const street = ($('#loc-street').value || '').trim();
+      const town = ($('#loc-town').value || '').trim();
+      const county = ($('#loc-county').value || '').trim();
+      const postcode = ($('#loc-postcode').value || '').trim().toUpperCase();
+
+      if (!name) { toast('Location Name is required.'); return; }
+
+      const addressCombined = [house, street].filter(Boolean).join(' ').trim();
+
+      try {
+        if (prefill.id) {
+          await db.collection('locations').doc(prefill.id).update({
+            name, address: addressCombined, postcode, city: town,
+            house, street, town, county
+          });
+          console.log('[showAddLocationModal] Updated location:', prefill.id);
+          close({ id: prefill.id, name });
+        } else {
+          const ref = await db.collection('locations').add({
+            name, address: addressCombined, postcode, city: town,
+            house, street, town, county,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          console.log('[showAddLocationModal] Added new location:', ref.id);
+          close({ id: ref.id, name });
+        }
+      } catch (e) {
+        console.error('[showAddLocationModal] Save error:', e.message);
+        toast(e.message || 'Could not save location');
+      }
+    };
+
+    function toast(msg) {
+      const m = $('#loc-msg');
+      m.textContent = msg;
+      m.classList.remove('hidden');
+      setTimeout(() => m.classList.add('hidden'), 1800);
+    }
   });
 }
 
@@ -1008,8 +916,6 @@ async function loadViewing() {
   });
 }
 
-showAddLocationModal
-
 /* =================== CALENDAR PAGE =================== */
 async function loadCalendar() {
   const wrap = document.getElementById('calendar-list');
@@ -1112,9 +1018,8 @@ async function populateCalendarEditor() {
         locName = ld.exists ? (ld.data().name || '') : '';
       }
 
-      const ts = firebase.firestore.Timestamp.fromDate(new Date(dateVal + 'T00:00:00'));
       await db.collection('films').doc(filmId).update({
-        viewingDate: ts,
+        viewingDate: firebase.firestore.Timestamp.fromDate(new Date(dateVal + 'T00:00:00')),
         viewingTime: timeVal,
         viewingLocationId: locId || '',
         viewingLocationName: locName
@@ -1344,7 +1249,6 @@ async function loadArchive() {
 }
 
 /* =================== Addresses (Admin) =================== */
-/* =================== Addresses (Admin) =================== */
 async function loadAddressesAdmin() {
   const tbody = els.addressesTable;
   const msg = els.addressesAdminMsg;
@@ -1387,20 +1291,28 @@ async function loadAddressesAdmin() {
       if (editBtn) {
         const id = editBtn.dataset.edit;
         console.log('[loadAddressesAdmin] Editing location:', id);
-        await showAddLocationModal({ id });
-        loadAddressesAdmin();
+        // Fetch the location data to prefill the modal
+        const doc = await db.collection('locations').doc(id).get();
+        if (doc.exists) {
+          await showAddLocationModal({ id, ...doc.data() });
+          loadAddressesAdmin();
+        }
       }
       if (delBtn) {
         const id = delBtn.dataset.del;
         if (confirm('Delete this address?')) {
           try {
-            console.log('[loadAddressesAdmin] Attempting to delete location:', id);
+            console.log('[loadAddressesAdmin] Attempting to delete location:', id, 'User role:', state.role);
             await db.collection('locations').doc(id).delete();
             console.log('[loadAddressesAdmin] Deleted location:', id);
             loadAddressesAdmin();
           } catch (e) {
             console.error('[loadAddressesAdmin] Delete error:', e.message);
-            alert(`Failed to delete address: ${e.message || 'Unknown error'}`);
+            if (e.code === 'permission-denied') {
+              alert('Cannot delete address: You do not have admin permissions. Please contact an administrator.');
+            } else {
+              alert(`Failed to delete address: ${e.message || 'Unknown error'}`);
+            }
           }
         }
       }
