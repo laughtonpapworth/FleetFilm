@@ -541,7 +541,6 @@ function showPicker(items) {
 }
 
 /* =================== Address Lookup =================== */
-/* =================== Address Lookup =================== */
 async function fetchAddressesByPostcode(pc) {
   const cfg = window.__FLEETFILM__CONFIG || {};
   const domainToken = cfg.getAddressDomainToken || '';
@@ -552,11 +551,16 @@ async function fetchAddressesByPostcode(pc) {
     console.warn('[fetchAddressesByPostcode] Invalid postcode format:', norm);
     return [];
   }
-  console.log('[fetchAddressesByPostcode] Attempting lookup for:', norm);
+  console.log('[fetchAddressesByPostcode] Attempting lookup for postcode:', norm);
+
+  // Check if API credentials are present
+  if (!domainToken && !apiKey) {
+    console.warn('[fetchAddressesByPostcode] No getaddress.io API key or domain token provided in __FLEETFILM__CONFIG');
+  }
 
   // Helper to hit getaddress.io and normalize results
-  const callGetAddress = async (url) => {
-    console.log('[fetchAddressesByPostcode] Fetching:', url);
+  const callGetAddress = async (url, method) => {
+    console.log('[fetchAddressesByPostcode] Fetching from getaddress.io:', url);
     try {
       const r = await fetch(url, { method: 'GET' });
       if (!r.ok) {
@@ -567,6 +571,9 @@ async function fetchAddressesByPostcode(pc) {
       const data = await r.json();
       console.log('[fetchAddressesByPostcode] getaddress.io response:', data);
       const raw = Array.isArray(data.addresses) ? data.addresses : (data.Address || data.address || []);
+      if (!raw.length) {
+        console.warn('[fetchAddressesByPostcode] getaddress.io returned no addresses');
+      }
       return raw.map(a => {
         const line1 = a.line_1 || a.building_name || a.building_number || '';
         const number = (a.building_number || '').toString();
@@ -603,7 +610,7 @@ async function fetchAddressesByPostcode(pc) {
         return list;
       }
     } catch (e) {
-      console.warn('[getaddress] domain token path failed:', e.message);
+      console.warn('[getaddress] Domain token path failed:', e.message);
     }
   }
 
@@ -622,13 +629,14 @@ async function fetchAddressesByPostcode(pc) {
   }
 
   // 3) Last resort: postcodes.io (gives town/county only — no property list)
+  console.log('[fetchAddressesByPostcode] Falling back to postcodes.io');
   try {
     const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
     if (r.ok) {
       const data = await r.json();
       if (data && data.status === 200 && data.result) {
         const res = data.result;
-        const county = res.admin_county || res.region || ''; // Prefer admin_county over ccg
+        const county = res.admin_county || res.region || res.country || ''; // Explicitly avoid ccg
         console.log('[fetchAddressesByPostcode] postcodes.io response:', res);
         return [{
           house: '',
@@ -1000,139 +1008,7 @@ async function loadViewing() {
   });
 }
 
-function showAddLocationModal(prefill = {}) {
-  return new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal">
-        <div class="modal-head">
-          <h2>${prefill.id ? 'Edit location' : 'Add new location'}</h2>
-          <button class="btn btn-ghost" id="loc-cancel">Cancel</button>
-        </div>
-        <div class="form-grid">
-          <label class="span-2">Location Name (required)
-            <input id="loc-name" type="text" placeholder="e.g. Church Hall" value="${prefill.name || ''}" required>
-          </label>
-          <label>Postcode
-            <input id="loc-postcode" type="text" placeholder="e.g. GU51 3RA" value="${prefill.postcode || ''}">
-          </label>
-          <div class="actions">
-            <button class="btn" id="loc-lookup">Lookup</button>
-          </div>
-          <div class="span-2" id="loc-options"></div>
-          <label>House / Name
-            <input id="loc-house" type="text" value="${prefill.house || ''}">
-          </label>
-          <label>Street
-            <input id="loc-street" type="text" value="${prefill.street || prefill.address || ''}">
-          </label>
-          <label>Town / City
-            <input id="loc-town" type="text" value="${prefill.town || prefill.city || ''}">
-          </label>
-          <label>County
-            <input id="loc-county" type="text" value="${prefill.county || ''}">
-          </label>
-          <div id="loc-msg" class="notice hidden span-2"></div>
-          <div class="actions span-2">
-            <div class="spacer"></div>
-            <button class="btn btn-primary" id="loc-save">${prefill.id ? 'Save changes' : 'Save'}</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    const $ = sel => overlay.querySelector(sel);
-    const close = (res) => { document.body.removeChild(overlay); resolve(res || null); };
-
-    $('#loc-cancel').onclick = () => close(null);
-
-    // Lookup click: fetch + render suggestions
-    $('#loc-lookup').onclick = async () => {
-      const pc = ($('#loc-postcode').value || '').trim();
-      if (!pc) { toast('Enter a postcode first'); return; }
-
-      const listEl = $('#loc-options');
-      listEl.innerHTML = '<div class="notice">Searching…</div>';
-
-      try {
-        const results = await fetchAddressesByPostcode(pc);
-        listEl.innerHTML = '';
-
-        if (!results.length) {
-          listEl.innerHTML = '<div class="notice">No addresses found for this postcode.</div>';
-          toast('No addresses found. Try another postcode or enter details manually.');
-          return;
-        }
-
-        results.forEach(a => {
-          const b = document.createElement('button');
-          b.className = 'btn btn-ghost';
-          b.type = 'button';
-          b.style.width = '100%';
-          b.style.textAlign = 'left';
-          b.textContent = a.label;
-          b.onclick = () => {
-            $('#loc-house').value = a.house || '';
-            $('#loc-street').value = a.street || '';
-            $('#loc-town').value = a.town || '';
-            $('#loc-county').value = a.county || '';
-            $('#loc-postcode').value = a.postcode || pc.toUpperCase();
-            listEl.innerHTML = ''; // Clear suggestions after selection
-          };
-          listEl.appendChild(b);
-        });
-      } catch (e) {
-        console.warn('[getaddress] lookup error:', e.message);
-        listEl.innerHTML = '<div class="notice">Lookup failed (check API key or network).</div>';
-        toast('Lookup failed. Check your API key or enter details manually.');
-      }
-    };
-
-    // Save
-    $('#loc-save').onclick = async () => {
-      const name = ($('#loc-name').value || '').trim();
-      const house = ($('#loc-house').value || '').trim();
-      const street = ($('#loc-street').value || '').trim();
-      const town = ($('#loc-town').value || '').trim();
-      const county = ($('#loc-county').value || '').trim();
-      const postcode = ($('#loc-postcode').value || '').trim().toUpperCase();
-
-      if (!name) { toast('Location Name is required.'); return; }
-
-      const addressCombined = [house, street].filter(Boolean).join(' ').trim();
-
-      try {
-        if (prefill.id) {
-          await db.collection('locations').doc(prefill.id).update({
-            name, address: addressCombined, postcode, city: town,
-            house, street, town, county
-          });
-          console.log('[showAddLocationModal] Updated location:', prefill.id);
-          close({ id: prefill.id, name });
-        } else {
-          const ref = await db.collection('locations').add({
-            name, address: addressCombined, postcode, city: town,
-            house, street, town, county,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          console.log('[showAddLocationModal] Added new location:', ref.id);
-          close({ id: ref.id, name });
-        }
-      } catch (e) {
-        console.error('[showAddLocationModal] Save error:', e.message);
-        toast(e.message || 'Could not save location');
-      }
-    };
-
-    function toast(msg) {
-      const m = $('#loc-msg');
-      m.textContent = msg;
-      m.classList.remove('hidden');
-      setTimeout(() => m.classList.add('hidden'), 1800);
-    }
-  });
-}
+showAddLocationModal
 
 /* =================== CALENDAR PAGE =================== */
 async function loadCalendar() {
