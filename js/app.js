@@ -279,6 +279,16 @@ function setNavOpen(open){
 function showSignedIn(on){
   els.signedIn.classList.toggle('hidden', !on);
   els.signedOut.classList.toggle('hidden', on);
+  els.nav.classList.toggle('hidden', !on);
+
+  // Mobile tab bar is hidden by default (.hidden in HTML/CSS); show it only when signed-in
+  const mbar = document.getElementById('mobile-tabbar');
+  if (mbar) mbar.classList.toggle('hidden', !on);
+
+  // Ensure the collapsible nav is closed when signed out
+  if (!on) els.nav.classList.remove('nav--open');
+}
+
 
   // Header nav & menu
   if(els.nav){
@@ -345,17 +355,25 @@ function attachHandlers(){
     els.submitBtn.addEventListener('click', submitFilm);
   }
 
-  // ---- Google Auth (force redirect; no popup) ----
-  if (els.googleBtn) {
-    els.googleBtn.addEventListener('click', async () => {
-      try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        await auth.signInWithRedirect(provider);
-      } catch (err) {
-        alert(err && err.message ? err.message : 'Google sign-in failed.');
-      }
-    });
-  }
+// ---- Auth buttons (popup-first, redirect fallback) ----
+if (els.googleBtn) {
+  els.googleBtn.addEventListener('click', async () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try {
+      // Try popup first (works on desktop and most mobile when triggered by a user click)
+      await auth.signInWithPopup(provider);
+    } catch (err) {
+      console.warn('Popup failed, falling back to redirect:', err && err.message);
+      await auth.signInWithRedirect(provider);
+    }
+  });
+}
+
+// If we DID come back from a redirect, complete it (no-op otherwise)
+auth.getRedirectResult().catch(err => {
+  console.warn('Redirect sign-in error:', err && err.message);
+});
+
 
   // Optional: surface redirect errors after returning from Google
   auth.getRedirectResult().catch(err => {
