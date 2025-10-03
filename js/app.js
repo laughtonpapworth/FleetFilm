@@ -541,14 +541,15 @@ function showPicker(items) {
 }
 
 /* =================== Address Lookup =================== */
+/* =================== Address Lookup =================== */
 async function fetchAddressesByPostcode(pc) {
   const cfg = window.__FLEETFILM__CONFIG || {};
   const domainToken = cfg.getAddressDomainToken || '';
   const apiKey = cfg.getAddressIoKey || cfg.getaddressIoKey || '';
 
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
-  if (!norm) {
-    console.warn('[fetchAddressesByPostcode] Empty or invalid postcode');
+  if (!norm || !/^[A-Z0-9]{5,7}$/.test(norm)) {
+    console.warn('[fetchAddressesByPostcode] Invalid postcode format:', norm);
     return [];
   }
   console.log('[fetchAddressesByPostcode] Attempting lookup for:', norm);
@@ -556,35 +557,40 @@ async function fetchAddressesByPostcode(pc) {
   // Helper to hit getaddress.io and normalize results
   const callGetAddress = async (url) => {
     console.log('[fetchAddressesByPostcode] Fetching:', url);
-    const r = await fetch(url, { method: 'GET' });
-    if (!r.ok) {
-      const txt = await r.text().catch(() => '');
-      console.error(`[fetchAddressesByPostcode] getaddress.io failed: ${r.status} ${txt || r.statusText}`);
-      throw new Error('getaddress.io request failed');
-    }
-    const data = await r.json();
-    console.log('[fetchAddressesByPostcode] getaddress.io response:', data);
-    const raw = Array.isArray(data.addresses) ? data.addresses : (data.Address || data.address || []);
-    return raw.map(a => {
-      const line1 = a.line_1 || a.building_name || a.building_number || '';
-      const number = (a.building_number || '').toString();
-      const house = line1 || number;
-      const street = a.thoroughfare || a.line_2 || '';
-      const town = a.town_or_city || a.post_town || a.town || '';
-      const county = a.county || a.county_name || '';
-      const postcode = (a.postcode || norm).toUpperCase();
+    try {
+      const r = await fetch(url, { method: 'GET' });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        console.error(`[fetchAddressesByPostcode] getaddress.io failed: ${r.status} ${txt || r.statusText}`);
+        throw new Error(`getaddress.io request failed: ${txt || r.statusText}`);
+      }
+      const data = await r.json();
+      console.log('[fetchAddressesByPostcode] getaddress.io response:', data);
+      const raw = Array.isArray(data.addresses) ? data.addresses : (data.Address || data.address || []);
+      return raw.map(a => {
+        const line1 = a.line_1 || a.building_name || a.building_number || '';
+        const number = (a.building_number || '').toString();
+        const house = line1 || number;
+        const street = a.thoroughfare || a.line_2 || '';
+        const town = a.town_or_city || a.post_town || a.town || '';
+        const county = a.county || a.county_name || '';
+        const postcode = (a.postcode || norm).toUpperCase();
 
-      const labelParts = [house, street, town, county, postcode].filter(Boolean);
-      return {
-        house: house || '',
-        street: street || '',
-        town: town || '',
-        county: county || '',
-        postcode,
-        address: [house, street].filter(Boolean).join(' '),
-        label: labelParts.join(', ')
-      };
-    });
+        const labelParts = [house, street, town, county, postcode].filter(Boolean);
+        return {
+          house: house || '',
+          street: street || '',
+          town: town || '',
+          county: county || '',
+          postcode,
+          address: [house, street].filter(Boolean).join(' '),
+          label: labelParts.join(', ')
+        };
+      });
+    } catch (e) {
+      console.error('[fetchAddressesByPostcode] getaddress.io error:', e.message);
+      throw e;
+    }
   };
 
   // 1) Try Domain Token (browser-safe)
@@ -592,9 +598,12 @@ async function fetchAddressesByPostcode(pc) {
     try {
       const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&domain_token=${encodeURIComponent(domainToken)}`;
       const list = await callGetAddress(url);
-      if (list.length) return list;
+      if (list.length) {
+        console.log('[fetchAddressesByPostcode] Success with domain token:', list);
+        return list;
+      }
     } catch (e) {
-      console.warn('[getaddress] domain token path failed:', e?.message);
+      console.warn('[getaddress] domain token path failed:', e.message);
     }
   }
 
@@ -603,9 +612,12 @@ async function fetchAddressesByPostcode(pc) {
     try {
       const url = `https://api.getaddress.io/find/${encodeURIComponent(norm)}?expand=true&api-key=${encodeURIComponent(apiKey)}`;
       const list = await callGetAddress(url);
-      if (list.length) return list;
+      if (list.length) {
+        console.log('[fetchAddressesByPostcode] Success with API key:', list);
+        return list;
+      }
     } catch (e) {
-      console.warn('[getaddress] api key path failed:', e?.message);
+      console.warn('[getaddress] API key path failed:', e.message);
     }
   }
 
@@ -616,21 +628,28 @@ async function fetchAddressesByPostcode(pc) {
       const data = await r.json();
       if (data && data.status === 200 && data.result) {
         const res = data.result;
+        const county = res.admin_county || res.region || ''; // Prefer admin_county over ccg
+        console.log('[fetchAddressesByPostcode] postcodes.io response:', res);
         return [{
           house: '',
           street: '',
           town: res.admin_district || res.parish || res.region || '',
-          county: res.ccg || res.region || '',
+          county: county,
           postcode: norm,
           address: '',
           label: `${norm} (${res.admin_district || res.parish || res.region || res.country || 'UK'})`
         }];
+      } else {
+        console.warn('[fetchAddressesByPostcode] postcodes.io returned no results:', data);
       }
+    } else {
+      console.warn('[fetchAddressesByPostcode] postcodes.io failed:', r.status, r.statusText);
     }
   } catch (e) {
-    console.warn('[postcodes.io] lookup failed:', e?.message);
+    console.warn('[postcodes.io] lookup failed:', e.message);
   }
 
+  console.warn('[fetchAddressesByPostcode] No addresses found for:', norm);
   return [];
 }
 
@@ -1041,7 +1060,8 @@ function showAddLocationModal(prefill = {}) {
         listEl.innerHTML = '';
 
         if (!results.length) {
-          listEl.innerHTML = '<div class="notice">No addresses found.</div>';
+          listEl.innerHTML = '<div class="notice">No addresses found for this postcode.</div>';
+          toast('No addresses found. Try another postcode or enter details manually.');
           return;
         }
 
@@ -1058,12 +1078,14 @@ function showAddLocationModal(prefill = {}) {
             $('#loc-town').value = a.town || '';
             $('#loc-county').value = a.county || '';
             $('#loc-postcode').value = a.postcode || pc.toUpperCase();
+            listEl.innerHTML = ''; // Clear suggestions after selection
           };
           listEl.appendChild(b);
         });
       } catch (e) {
-        console.warn('[getaddress] lookup error:', e?.message);
-        listEl.innerHTML = '<div class="notice">Lookup failed (network, token, or CORS).</div>';
+        console.warn('[getaddress] lookup error:', e.message);
+        listEl.innerHTML = '<div class="notice">Lookup failed (check API key or network).</div>';
+        toast('Lookup failed. Check your API key or enter details manually.');
       }
     };
 
@@ -1086,6 +1108,7 @@ function showAddLocationModal(prefill = {}) {
             name, address: addressCombined, postcode, city: town,
             house, street, town, county
           });
+          console.log('[showAddLocationModal] Updated location:', prefill.id);
           close({ id: prefill.id, name });
         } else {
           const ref = await db.collection('locations').add({
@@ -1093,10 +1116,12 @@ function showAddLocationModal(prefill = {}) {
             house, street, town, county,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
+          console.log('[showAddLocationModal] Added new location:', ref.id);
           close({ id: ref.id, name });
         }
       } catch (e) {
-        toast(e.message || 'Could not save');
+        console.error('[showAddLocationModal] Save error:', e.message);
+        toast(e.message || 'Could not save location');
       }
     };
 
@@ -1443,53 +1468,79 @@ async function loadArchive() {
 }
 
 /* =================== Addresses (Admin) =================== */
+/* =================== Addresses (Admin) =================== */
 async function loadAddressesAdmin() {
   const tbody = els.addressesTable;
   const msg = els.addressesAdminMsg;
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-  const snap = await db.collection('locations').orderBy('name').get();
-
-  if (snap.empty) {
-    if (msg) { msg.textContent = 'No saved addresses yet.'; msg.classList.remove('hidden'); }
+  if (!tbody) {
+    console.error('[loadAddressesAdmin] Addresses table not found');
     return;
   }
-  if (msg) msg.classList.add('hidden');
 
-  snap.docs.forEach(d => {
-    const l = { id: d.id, ...d.data() };
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${l.name || ''}</td>
-      <td>${l.address || ''}</td>
-      <td>${l.city || ''}</td>
-      <td>${l.postcode || ''}</td>
-      <td>
-        <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
-        <button class="btn btn-danger" data-del="${l.id}">Delete</button>
-      </td>`;
-    tbody.appendChild(tr);
-  });
-
-  tbody.addEventListener('click', async (e) => {
-    const editBtn = e.target.closest('button[data-edit]');
-    const delBtn = e.target.closest('button[data-del]');
-    if (editBtn) {
-      const id = editBtn.dataset.edit;
-      await showAddLocationModal({ id });
-      loadAddressesAdmin();
+  tbody.innerHTML = '';
+  try {
+    const snap = await db.collection('locations').orderBy('name').get();
+    if (snap.empty) {
+      if (msg) {
+        msg.textContent = 'No saved addresses yet.';
+        msg.classList.remove('hidden');
+      }
+      console.log('[loadAddressesAdmin] No locations found');
+      return;
     }
-    if (delBtn) {
-      const id = delBtn.dataset.del;
-      if (confirm('Delete this address?')) {
-        await db.collection('locations').doc(id).delete();
+    if (msg) msg.classList.add('hidden');
+
+    snap.docs.forEach(d => {
+      const l = { id: d.id, ...d.data() };
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${l.name || ''}</td>
+        <td>${l.address || ''}</td>
+        <td>${l.city || ''}</td>
+        <td>${l.postcode || ''}</td>
+        <td>
+          <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
+          <button class="btn btn-danger" data-del="${l.id}">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+
+    tbody.addEventListener('click', async (e) => {
+      const editBtn = e.target.closest('button[data-edit]');
+      const delBtn = e.target.closest('button[data-del]');
+      if (editBtn) {
+        const id = editBtn.dataset.edit;
+        console.log('[loadAddressesAdmin] Editing location:', id);
+        await showAddLocationModal({ id });
         loadAddressesAdmin();
       }
+      if (delBtn) {
+        const id = delBtn.dataset.del;
+        if (confirm('Delete this address?')) {
+          try {
+            console.log('[loadAddressesAdmin] Attempting to delete location:', id);
+            await db.collection('locations').doc(id).delete();
+            console.log('[loadAddressesAdmin] Deleted location:', id);
+            loadAddressesAdmin();
+          } catch (e) {
+            console.error('[loadAddressesAdmin] Delete error:', e.message);
+            alert(`Failed to delete address: ${e.message || 'Unknown error'}`);
+          }
+        }
+      }
+    });
+  } catch (e) {
+    console.error('[loadAddressesAdmin] Error loading locations:', e.message);
+    if (msg) {
+      msg.textContent = 'Error loading addresses: ' + e.message;
+      msg.classList.remove('hidden');
     }
-  });
+  }
 
-  document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
+  document.getElementById('addr-refresh')?.addEventListener('click', () => {
+    console.log('[loadAddressesAdmin] Refresh triggered');
+    loadAddressesAdmin();
+  });
 }
 
 /* =================== Admin actions =================== */
