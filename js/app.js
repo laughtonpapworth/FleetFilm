@@ -11,10 +11,12 @@ const els = {
   signedOut: document.getElementById('signed-out'),
   signedIn: document.getElementById('signed-in'),
   nav: document.getElementById('nav'),
+  navToggle: document.getElementById('nav-toggle'),
+  mobileTabbar: document.getElementById('mobile-tabbar'),
   signOut: document.getElementById('btn-signout'),
 
   // LIST CONTAINERS
-  pendingList: document.getElementById('intake-list'), // reused id; shows "Pending Films"
+  pendingList: document.getElementById('intake-list'),
   basicList: document.getElementById('basic-list'),
   viewingList: document.getElementById('viewing-list'),
   voteList: document.getElementById('vote-list'),
@@ -23,8 +25,8 @@ const els = {
   nextProgList: document.getElementById('nextprog-list'),
   discardedList: document.getElementById('discarded-list'),
   archiveList: document.getElementById('archive-list'),
+  addressesList: document.getElementById('addresses-list'),
 
-  // Addresses admin
   addressesTable: document.querySelector('#addresses-table tbody'),
   addressesAdminMsg: document.getElementById('addresses-admin-msg'),
 
@@ -130,7 +132,7 @@ async function refreshCalendarOnly(){
   events.forEach(ev=>{
     const d = ev.viewingDate.toDate();
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const locName = ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : ''; // name only, blank if none
+    const locName = ev.viewingLocationName ? ` • ${ev.viewingLocationName}` : '';
     const time = ev.viewingTime ? ` ${ev.viewingTime}` : '';
     const label = `${ev.title}${time}${locName}`;
     (byISO[iso] ||= []).push({ text: label, id: ev.id });
@@ -178,20 +180,15 @@ function openCalendarQuickActions(film){
 
   overlay.querySelector('#calqa-edit').onclick = async ()=>{
     close();
-    // Ensure we're on the calendar view
-    if (location.hash.replace('#','') !== 'calendar') location.hash = 'calendar';
-    // Prefill editor with this film
     await prefillCalendarEditor(film.id);
-    const card = document.getElementById('calendar-card');
-    if(card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('calendar-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   overlay.querySelector('#calqa-details').onclick = ()=>{
     close();
     location.hash = 'viewing';
     setTimeout(()=>{
-      const card = document.querySelector(`[data-film-card="${film.id}"]`);
-      if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+      document.querySelector(`[data-film-card="${film.id}"]`)?.scrollIntoView({behavior:'smooth', block:'start'});
     }, 250);
   };
 
@@ -219,14 +216,10 @@ function getFirebaseConfig(){
 
 async function waitForFirebaseAndConfig(timeoutMs = 10000){
   const start = Date.now();
-
-  // wait for SDK global
   while (!haveFirebaseSDK()) {
     if (Date.now() - start > timeoutMs) return false;
     await new Promise(r => setTimeout(r, 25));
   }
-
-  // accept either an already-initialized app or an available config object
   while (true) {
     if (firebase.apps && firebase.apps.length > 0) return true;
     if (getFirebaseConfig()) return true;
@@ -236,50 +229,73 @@ async function waitForFirebaseAndConfig(timeoutMs = 10000){
 }
 
 function initFirebaseOnce(){
-  // Already initialized by firebase-config.js?
   if (firebase.apps && firebase.apps.length > 0) {
     app  = firebase.app();
     auth = firebase.auth();
     db   = firebase.firestore();
     return;
   }
-  // Initialize from a provided global config
   const cfg = getFirebaseConfig();
-  if (!cfg || !cfg.apiKey) {
-    throw new Error('Missing Firebase config');
-  }
+  if (!cfg || !cfg.apiKey) throw new Error('Missing Firebase config');
   app  = firebase.initializeApp(cfg);
   auth = firebase.auth();
   db   = firebase.firestore();
+  auth.useDeviceLanguage?.();
 }
 
-
 /* =================== Router / Views =================== */
-function showSignedIn(on){
-  if (els.signedIn)  els.signedIn.classList.toggle('hidden', !on);
-  if (els.signedOut) els.signedOut.classList.toggle('hidden', on);
-  if (els.nav)       els.nav.classList.toggle('hidden', !on);
+function setView(name){
+  Object.values(els.navButtons).forEach(btn => btn && btn.classList.remove('active'));
+  if(els.navButtons[name]) els.navButtons[name].classList.add('active');
 
-  const mbar = document.getElementById('mobile-tabbar');
-  if (mbar) mbar.classList.toggle('hidden', !on);
+  Object.values(els.views).forEach(v => v && v.classList.add('hidden'));
+  if(els.views[name]) els.views[name].classList.remove('hidden');
+
+  if(name==='pending')    return loadPending();
+  if(name==='basic')      return loadBasic();
+  if(name==='viewing')    return loadViewing();
+  if(name==='vote')       return loadVote();
+  if(name==='uk')         return loadUk();
+  if(name==='green')      return loadGreen();
+  if(name==='nextprog')   return loadNextProgramme();
+  if(name==='discarded')  return loadDiscarded();
+  if(name==='archive')    return loadArchive();
+  if(name==='calendar')   return loadCalendar();
+  if(name==='addresses')  return loadAddressesAdmin();
 }
 
 function routerFromHash(){
   const h = (location.hash.replace('#','') || 'submit');
-  const map = { intake:'pending', approved:'green' }; // legacy -> new
+  const map = { intake:'pending', approved:'green' };
   setView(map[h] || h);
 }
 
-function showSignedIn(on){
-  if (els.signedIn)  els.signedIn.classList.toggle('hidden', !on);
-  if (els.signedOut) els.signedOut.classList.toggle('hidden', on);
-  if (els.nav)       els.nav.classList.toggle('hidden', !on);
-
-  const mbar = document.getElementById('mobile-tabbar');
-  if (mbar) mbar.classList.toggle('hidden', !on);
+function setNavOpen(open){
+  if(!els.nav) return;
+  if(open) els.nav.classList.add('nav--open');
+  else els.nav.classList.remove('nav--open');
 }
 
-// Create a user doc if missing
+function showSignedIn(on){
+  els.signedIn.classList.toggle('hidden', !on);
+  els.signedOut.classList.toggle('hidden', on);
+
+  // Header nav & menu
+  if(els.nav){
+    els.nav.classList.toggle('hidden', !on);
+    if(!on) setNavOpen(false);
+  }
+  document.querySelector('.header-actions')?.classList.toggle('hidden', !on);
+  if(els.signOut) els.signOut.classList.toggle('hidden', !on);
+  if(els.navToggle) els.navToggle.classList.toggle('hidden', !on);
+
+  // Mobile tabbar
+  if(els.mobileTabbar){
+    els.mobileTabbar.classList.toggle('hidden', !on);
+  }
+}
+
+/* Create a user doc if missing */
 async function ensureUserDoc(u){
   const ref = db.collection('users').doc(u.uid);
   const snap = await ref.get();
@@ -302,47 +318,76 @@ async function ensureUserDoc(u){
 }
 
 function attachHandlers(){
-  // nav clicks
+  // Header Menu (mobile)
+  if(els.navToggle){
+    els.navToggle.addEventListener('click', ()=>{
+      if(els.nav?.classList.contains('nav--open')) setNavOpen(false);
+      else setNavOpen(true);
+    });
+  }
+
+  // Top nav routing
   Object.values(els.navButtons).forEach(btn => {
-    if (!btn) return;
-    btn.addEventListener('click', () => { location.hash = btn.dataset.view; });
+    if(!btn) return;
+    btn.addEventListener('click', () => {
+      setNavOpen(false);
+      location.hash = btn.dataset.view;
+    });
   });
 
-  if (els.signOut) els.signOut.addEventListener('click', () => auth.signOut());
-  if (els.submitBtn) els.submitBtn.addEventListener('click', submitFilm);
+  // Sign out
+  if(els.signOut){
+    els.signOut.addEventListener('click', () => auth.signOut());
+  }
 
-  // Google sign-in: redirect-only (reliable on iOS/mobile)
-if (els.googleBtn) {
-  els.googleBtn.addEventListener('click', async () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithRedirect(provider);
+  // Submit button
+  if(els.submitBtn){
+    els.submitBtn.addEventListener('click', submitFilm);
+  }
+
+  // ---- Google Auth (force redirect; no popup) ----
+  if (els.googleBtn) {
+    els.googleBtn.addEventListener('click', async () => {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await auth.signInWithRedirect(provider);
+      } catch (err) {
+        alert(err && err.message ? err.message : 'Google sign-in failed.');
+      }
+    });
+  }
+
+  // Optional: surface redirect errors after returning from Google
+  auth.getRedirectResult().catch(err => {
+    // This call is important on mobile: it completes the redirect flow.
+    console.warn('Redirect sign-in error:', err && err.message);
   });
-}
 
-  if (els.emailSignInBtn) {
+  // Email auth
+  if(els.emailSignInBtn){
     els.emailSignInBtn.addEventListener('click', async () => {
       try {
         await auth.signInWithEmailAndPassword(els.email.value, els.password.value);
-      } catch (e) { alert(e.message); }
+      } catch(e) { alert(e.message); }
     });
   }
-
-  if (els.emailCreateBtn) {
+  if(els.emailCreateBtn){
     els.emailCreateBtn.addEventListener('click', async () => {
       try {
         await auth.createUserWithEmailAndPassword(els.email.value, els.password.value);
-      } catch (e) { alert(e.message); }
+      } catch(e) { alert(e.message); }
     });
   }
 
+  // Hash router
   window.addEventListener('hashchange', routerFromHash);
 
-  // mobile tabbar routing
+  // Mobile bottom tabbar (if present)
   const mbar = document.getElementById('mobile-tabbar');
-  if (mbar) {
-    mbar.addEventListener('click', (e) => {
+  if(mbar){
+    mbar.addEventListener('click', (e)=>{
       const btn = e.target.closest('button[data-view]');
-      if (!btn) return;
+      if(!btn) return;
       location.hash = btn.dataset.view;
     });
   }
@@ -499,7 +544,6 @@ async function fetchAddressesByPostcode(pc){
   return [];
 }
 
-
 /* =================== Submit (Title+Year; manual ok) =================== */
 async function submitFilm(){
   const title = (els.title.value||'').trim();
@@ -579,7 +623,7 @@ async function submitFilm(){
       els.submitMsg.classList.remove('hidden');
       setTimeout(()=>els.submitMsg.classList.add('hidden'), 1800);
     }
-    if(els.title) els.title.value=''; 
+    if(els.title) els.title.value='';
     if(els.year) els.year.value='';
     setView('pending');
   }catch(e){ alert(e.message); }
@@ -597,8 +641,6 @@ async function fetchByStatus(status){
 }
 
 /* =================== Rendering helpers =================== */
-
-// Pending card: poster + title + actions only
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -613,7 +655,6 @@ function pendingCard(f, actionsHtml=''){
   </div>`;
 }
 
-// Detailed card
 function detailCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
   const poster = f.posterUrl ? `<img alt="Poster" src="${f.posterUrl}" class="poster">` : '';
@@ -643,7 +684,6 @@ function detailCard(f, actionsHtml=''){
 /* =================== Pending Films =================== */
 async function loadPending(){
   const docs = await fetchByStatus('intake');
-
   let films = docs.map(d=>({ id:d.id, ...d.data() }));
   if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
 
@@ -659,7 +699,6 @@ async function loadPending(){
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  // Move to Basic
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.next;
@@ -669,7 +708,6 @@ async function loadPending(){
     });
   });
 
-  // Discard from pending
   els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.discard;
@@ -678,7 +716,6 @@ async function loadPending(){
     });
   });
 
-  // Archive from pending
   els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.archive;
@@ -727,10 +764,12 @@ async function loadBasic(){
       await db.collection('films').doc(id).update({ [field]: val });
     });
   });
-  els.basicList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  els.basicList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+  });
 }
 
-/* =================== VIEWING (location + editable date/time + jump to calendar) =================== */
+/* =================== VIEWING =================== */
 async function loadViewing(){
   els.viewingList.innerHTML = '';
 
@@ -853,18 +892,9 @@ async function loadViewing(){
   });
 }
 
-/* ---------- Add Location Modal (with postcode lookup + selectable results) ---------- */
+/* ---------- Add Location Modal ---------- */
 function showAddLocationModal(prefill={}){
-  return new Promise(async resolve=>{
-    // If only id provided, fetch the doc to prefill
-    if (prefill.id && (!prefill.name && !prefill.address && !prefill.postcode && !prefill.city)) {
-      const snap = await db.collection('locations').doc(prefill.id).get();
-      if (snap.exists) {
-        const d = snap.data();
-        prefill = { id: prefill.id, name: d.name||'', address: d.address||'', postcode: d.postcode||'', city: d.city||'' };
-      }
-    }
-
+  return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className='modal-overlay';
     overlay.innerHTML = `
@@ -959,7 +989,7 @@ function showAddLocationModal(prefill={}){
   });
 }
 
-/* =================== CALENDAR PAGE (editable: date, time, location) =================== */
+/* =================== CALENDAR PAGE =================== */
 async function loadCalendar(){
   const wrap = document.getElementById('calendar-list');
   if(wrap && !document.getElementById('cal-grid')){
@@ -998,18 +1028,15 @@ async function loadCalendar(){
 
   await refreshCalendarOnly();
 
-  // Back button
   const back = document.getElementById('cal-back');
   if(back){ back.onclick = ()=>{ location.hash = 'viewing'; }; }
 
-  // Month nav
   const prev = document.getElementById('cal-prev');
   const next = document.getElementById('cal-next');
   if(prev) prev.onclick = ()=>{ calOffset -= 1; refreshCalendarOnly(); };
   if(next) next.onclick = ()=>{ calOffset += 1; refreshCalendarOnly(); };
 
-  // Scheduling editor
-  await populateCalendarEditor(); // load locations + prefill if scheduleTarget exists
+  await populateCalendarEditor();
 }
 
 async function populateCalendarEditor(){
@@ -1023,10 +1050,9 @@ async function populateCalendarEditor(){
 
   if(!dateInp || !timeInp || !sel) return;
 
-  // Load locations
   const locSnap = await db.collection('locations').orderBy('name').get();
   const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
-  sel.innerHTML = `<option value="">Select location…</option>` + 
+  sel.innerHTML = `<option value="">Select location…</option>` +
     locs.map(l=>`<option value="${l.id}">${l.name||'(no name)'}</option>`).join('');
 
   if(!filmId){
@@ -1044,11 +1070,7 @@ async function populateCalendarEditor(){
       } else dateInp.value = '';
       timeInp.value = f.viewingTime || '';
 
-      if(f.viewingLocationId){
-        sel.value = f.viewingLocationId;
-      }else{
-        sel.value = '';
-      }
+      sel.value = f.viewingLocationId || '';
     }
   }
 
@@ -1056,7 +1078,7 @@ async function populateCalendarEditor(){
     addBtn.onclick = async ()=>{
       const created = await showAddLocationModal();
       if(created){
-        await populateCalendarEditor(); // reload options
+        await populateCalendarEditor();
         sel.value = created.id;
       }
     };
@@ -1104,13 +1126,12 @@ async function populateCalendarEditor(){
   }
 }
 
-/* Prefill editor for a specific film id (called from quick actions) */
 async function prefillCalendarEditor(filmId){
   sessionStorage.setItem('scheduleTarget', filmId);
   await populateCalendarEditor();
 }
 
-/* =================== VOTING (4 YES to proceed; show who voted) =================== */
+/* =================== VOTING =================== */
 async function loadVote(){
   const docs = await fetchByStatus('voting');
   els.voteList.innerHTML='';
@@ -1190,7 +1211,6 @@ async function checkAutoOutcome(filmId){
     if(val===1) yes+=1;
     if(val===-1) no+=1;
   });
-  // 4 YES -> move to UK Distributor; 4 NO -> Discard
   if(yes>=4){
     await ref.update({ status:'uk_check' });
   } else if(no>=4){
@@ -1198,7 +1218,7 @@ async function checkAutoOutcome(filmId){
   }
 }
 
-/* =================== UK CHECK (after Voting) =================== */
+/* =================== UK CHECK =================== */
 async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
@@ -1213,7 +1233,9 @@ async function loadUk(){
     `;
     els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.ukList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  els.ukList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+  });
 }
 
 /* =================== GREEN LIST =================== */
@@ -1232,7 +1254,9 @@ async function loadGreen(){
       </div>`;
     els.greenList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.greenList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  els.greenList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+  });
 }
 
 /* =================== NEXT PROGRAMME =================== */
@@ -1260,7 +1284,9 @@ async function loadNextProgramme(){
       </div>`;
     els.nextProgList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.nextProgList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  els.nextProgList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+  });
 }
 
 async function archiveAllNextProg(){
@@ -1288,7 +1314,9 @@ async function loadDiscarded(){
       </div>`;
     els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id)));
+  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+  });
 }
 
 /* =================== ARCHIVE =================== */
@@ -1334,12 +1362,12 @@ async function loadAddressesAdmin(){
     tbody.appendChild(tr);
   });
 
-  tbody.onclick = async (e)=>{
+  tbody.addEventListener('click', async (e)=>{
     const editBtn = e.target.closest('button[data-edit]');
-    const delBtn  = e.target.closest('button[data-del]');
+    const delBtn = e.target.closest('button[data-del]');
     if (editBtn){
       const id = editBtn.dataset.edit;
-      await showAddLocationModal({ id }); // fetch + prefill happens inside
+      await showAddLocationModal({ id });
       loadAddressesAdmin();
     }
     if (delBtn){
@@ -1349,7 +1377,7 @@ async function loadAddressesAdmin(){
         loadAddressesAdmin();
       }
     }
-  };
+  });
 
   document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
 }
@@ -1362,7 +1390,6 @@ async function adminAction(action, filmId){
     if(action==='restore')    await ref.update({ status:'intake' });
     if(action==='to-voting')  await ref.update({ status:'voting' });
 
-    // Basic validate → Viewing
     if (action === 'basic-validate') {
       const snap = await ref.get();
       const f = snap.data() || {};
@@ -1385,18 +1412,15 @@ async function adminAction(action, filmId){
       return;
     }
 
-    // UK decisions
-    if(action==='uk-yes'){ 
+    if(action==='uk-yes'){
       await ref.update({ hasUkDistributor:true, status:'greenlist', greenAt: firebase.firestore.FieldValue.serverTimestamp() });
     }
-    if(action==='uk-no'){ 
+    if(action==='uk-no'){
       await ref.update({ hasUkDistributor:false, status:'discarded' });
     }
 
-    // Green list move
     if(action==='to-nextprog'){ await ref.update({ status:'next_programme' }); }
 
-    // Archive / provenance
     if(action==='to-archive'){
       const snap2 = await ref.get();
       const cur = (snap2.exists && snap2.data().status) || '';
@@ -1410,32 +1434,23 @@ async function adminAction(action, filmId){
 /* =================== Boot =================== */
 async function boot(){
   const ok = await waitForFirebaseAndConfig(10000);
-  if (!ok) { alert('Missing Firebase config. Check js/firebase-config.js'); return; }
-
-  try { initFirebaseOnce(); } catch { alert('Missing Firebase config.'); return; }
-
-  // Persist session (iOS/Safari especially)
-  try {
-    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-  } catch (e) {
-    console.warn('setPersistence failed:', e && e.message);
+  if(!ok){
+    alert('Missing Firebase config. Check js/firebase-config.js (must either initialize Firebase or set window.__FLEETFILM__CONFIG / window.firebaseConfig).');
+    return;
   }
 
-  // Handle Google redirect result right away (important on mobile)
   try {
-    const res = await auth.getRedirectResult();
-    if (res && (res.user || res.credential)) {
-      console.log('Handled Google redirect result.');
-    }
+    initFirebaseOnce();
   } catch (e) {
-    console.warn('Redirect sign-in error:', e && e.message);
+    alert('Missing Firebase config. Check js/firebase-config.js.');
+    return;
   }
 
   attachHandlers();
 
   auth.onAuthStateChanged(async (u) => {
     state.user = u;
-    if (!u) {
+    if(!u){
       showSignedIn(false);
       location.hash = 'submit';
       return;
@@ -1445,7 +1460,5 @@ async function boot(){
     routerFromHash();
   });
 }
+
 document.addEventListener('DOMContentLoaded', boot);
-
-
-
