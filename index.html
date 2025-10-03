@@ -227,20 +227,15 @@
 </script>
 
 <!-- Mobile bottom tab bar (JS hides it when signed out) -->
+<!-- Mobile bottom tab bar (shown only when signed in) -->
 <nav id="mobile-tabbar" class="mobile-tabbar hidden">
   <button data-view="submit"><span class="ico">➕</span><span>Submit</span></button>
-  <button data-view="pending"><span class="ico">📝</span><span>Pending</span></button>
-  <button data-view="basic"><span class="ico">✅</span><span>Basic</span></button>
   <button data-view="viewing"><span class="ico">🎬</span><span>Viewing</span></button>
-  <button data-view="vote"><span class="ico">🗳️</span><span>Vote</span></button>
-  <button data-view="uk"><span class="ico">🇬🇧</span><span>UK Check</span></button>
-  <button data-view="green"><span class="ico">🟢</span><span>Green</span></button>
-  <button data-view="nextprog"><span class="ico">📅</span><span>Next</span></button>
-  <button data-view="discarded"><span class="ico">🗑️</span><span>Discarded</span></button>
-  <button data-view="archive"><span class="ico">📦</span><span>Archive</span></button>
+  <button data-view="vote"><span class="ico">🗳️</span><span>Voting</span></button>
   <button data-view="calendar"><span class="ico">🗓️</span><span>Calendar</span></button>
-  <button data-view="addresses"><span class="ico">📍</span><span>Addresses</span></button>
+  <button id="tab-more"><span class="ico">⋯</span><span>More</span></button>
 </nav>
+
 
 
 <div id="modal-root"></div>
