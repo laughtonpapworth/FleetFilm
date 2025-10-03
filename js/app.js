@@ -548,6 +548,19 @@ function showPicker(items){
  * - getAddressIoKey       (API key)
  * Returns an array of { house, street, town, county, postcode, label, address }
  */
+/* =================== getaddress.io address search with solid fallbacks =================== */
+/**
+ * Uses, in order:
+ *   1) getaddress.io /autocomplete + /get
+ *   2) getaddress.io /postcode (expanded structured fields)
+ *   3) postcodes.io (town/county only)
+ *
+ * Config (in window.__FLEETFILM__CONFIG):
+ *   - getAddressDomainToken  (preferred, no API key in browser)
+ *   - getAddressIoKey        (fallback)
+ *
+ * Returns: Array<{house, street, town, county, postcode, label, address}>
+ */
 async function fetchAddressesByPostcode(pc){
   const cfg = (window.__FLEETFILM__CONFIG || {});
   const domainToken = cfg.getAddressDomainToken || cfg.getaddressDomainToken;
@@ -556,99 +569,111 @@ async function fetchAddressesByPostcode(pc){
   const norm = String(pc || '').trim().toUpperCase();
   if (!norm) return [];
 
-  const debug = (...args) => console.log('[getaddress]', ...args);
+  const debug = (...a)=>console.log('[getaddress]', ...a);
 
-  // Helper: perform a GET to GA with either domain_token or api-key
+  // ----- helpers -----
+  function paramsWithAuth(params = {}){
+    const u = new URLSearchParams(params);
+    if (domainToken) u.set('domain_token', domainToken);
+    else if (apiKey) u.set('api-key', apiKey);
+    return u.toString();
+  }
+
   async function gaGet(path, params){
-    const url = new URL(`https://api.getaddress.io${path}`);
-    if (params) Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, String(v)));
-
-    if (domainToken) url.searchParams.set('domain_token', domainToken);
-    else if (apiKey) url.searchParams.set('api-key', apiKey);
-    else return { ok:false, status:0, data:null };
-
-    const res = await fetch(url.toString(), { method:'GET' });
-    let data = null;
-    try { data = await res.json(); } catch {}
+    if (!domainToken && !apiKey) return { ok:false, status:0, data:null };
+    const qs = paramsWithAuth(params || {});
+    const url = `https://api.getaddress.io${path}${qs ? '?' + qs : ''}`;
+    const res = await fetch(url, { method:'GET' });
+    let data = null; try { data = await res.json(); } catch {}
     return { ok: res.ok, status: res.status, data };
   }
 
-  // Map GA "get/{id}" address object to our fields
+  // map GA /get or /postcode(expand) record -> our fields
   function mapGA(addr){
-    // GA /get returns fields like: building_name, building_number, line_1..line_3, thoroughfare, town_or_city, county, postcode
-    const house = String(addr.sub_building_name || addr.building_name || addr.building_number || addr.line_1 || '').trim();
-    const street = String(
-      addr.thoroughfare || (addr.line_2 && addr.line_2 !== house ? addr.line_2 : '') || ''
+    const house = String(
+      addr.sub_building_name ||
+      addr.building_name ||
+      addr.building_number ||
+      addr.line_1 || ''
     ).trim();
+
+    // Prefer thoroughfare; else use the first line that isn't the same as house
+    let street = String(
+      addr.thoroughfare ||
+      (addr.line_2 && addr.line_2 !== house ? addr.line_2 : '') ||
+      (addr.line_1 && addr.line_1 !== house ? addr.line_1 : '') ||
+      ''
+    ).trim();
+
+    // If street is still empty, try line_3
+    if (!street) street = String(addr.line_3 || '').trim();
+
     const town   = String(addr.town_or_city || addr.post_town || '').trim();
     const county = String(addr.county || addr.county_name || addr.county_or_unitary || '').trim();
     const postcode = String(addr.postcode || norm).toUpperCase();
+
     const label = [house, street, town, postcode].filter(Boolean).join(', ');
-    return { house, street, town, county, postcode, label, address: [house, street].filter(Boolean).join(' ') };
+    return {
+      house, street, town, county, postcode,
+      label,
+      address: [house, street].filter(Boolean).join(' ')
+    };
   }
 
+  // ----- 1) Autocomplete -> Get -----
   try {
-    // Step 1: autocomplete – ask for lots, then filter to exact postcode
     const ac = await gaGet(`/autocomplete/${encodeURIComponent(norm)}`, { top: 50, all: true });
     debug('autocomplete status', ac.status);
 
     if (ac.ok && ac.data && Array.isArray(ac.data.suggestions) && ac.data.suggestions.length){
-      // Narrow to suggestions that match this exact postcode (GA includes the postcode on suggestions)
+      // prefer suggestions that match this exact PC
       const exact = ac.data.suggestions.filter(s => String(s.postcode || '').toUpperCase() === norm);
+      const chosen = exact.length ? exact : ac.data.suggestions.slice(0, 20);
 
-      // Step 2: for each suggestion, fetch the full record via /get/{id}
       const out = [];
-      for (const s of exact){
+      for (const s of chosen){
         if (!s.id) continue;
         const gt = await gaGet(`/get/${encodeURIComponent(s.id)}`, {});
-        debug('get status', gt.status, s.id);
-        if (gt.ok && gt.data && gt.data.address) {
-          out.push(mapGA(gt.data.address));
-        }
-      }
-
-      if (out.length) return out;
-      // If no exact postcode suggestions yielded details, try taking the top few regardless
-      const topFew = ac.data.suggestions.slice(0, 10);
-      for (const s of topFew){
-        if (!s.id) continue;
-        const gt = await gaGet(`/get/${encodeURIComponent(s.id)}`, {});
-        if (gt.ok && gt.data && gt.data.address) {
-          const mapped = mapGA(gt.data.address);
-          if (mapped.postcode === norm) out.push(mapped);
-        }
+        debug('get status', gt.status);
+        if (gt.ok && gt.data && gt.data.address) out.push(mapGA(gt.data.address));
       }
       if (out.length) return out;
     }
+  } catch(e){ debug('autocomplete/get error', e); }
 
-    // If Autocomplete isn’t available on your plan or returns nothing, we’re done here.
-    // (We purposefully do NOT call /find anymore because it often 404s even for valid postcodes.)
+  // ----- 2) /postcode/{PC}?expand=true (returns all addresses at the postcode) -----
+  try {
+    const pp = await gaGet(`/postcode/${encodeURIComponent(norm)}`, { expand: true });
+    debug('postcode status', pp.status);
+    if (pp.ok && pp.data){
+      // api returns either {addresses:[{...}, ...]} or an array directly depending on plan/version
+      const arr = Array.isArray(pp.data.addresses) ? pp.data.addresses : (Array.isArray(pp.data) ? pp.data : []);
+      const out = arr.map(mapGA).filter(a => a.postcode.toUpperCase() === norm);
+      if (out.length) return out;
+    }
+  } catch(e){ debug('postcode error', e); }
 
-  } catch (e) {
-    debug('GA network/error', e);
-  }
-
-  // Fallback: postcodes.io (gives town/county only, still useful)
+  // ----- 3) Fallback: postcodes.io (validates PC + town/county only) -----
   try {
     const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(norm)}`);
-    if (!r.ok) return [];
-    const data = await r.json();
-    if (data && data.status === 200 && data.result){
-      const res = data.result;
-      const town   = (res.admin_district || res.post_town || res.parish || res.region || res.country || '').trim();
-      const county = (res.admin_county || res.region || '').trim();
-      return [{
-        house:'', street:'', town, county, postcode:norm,
-        label: `${norm}${town ? ' (' + town + ')' : ''}`,
-        address: ''
-      }];
+    if (r.ok){
+      const data = await r.json();
+      if (data && data.status === 200 && data.result){
+        const res = data.result;
+        const town   = (res.admin_district || res.post_town || res.parish || res.region || res.country || '').trim();
+        const county = (res.admin_county || res.region || '').trim();
+        return [{
+          house:'', street:'', town, county, postcode:norm,
+          label: `${norm}${town ? ' (' + town + ')' : ''}`,
+          address: ''
+        }];
+      }
     }
-  } catch(e){
-    debug('fallback error', e);
-  }
+  } catch(e){ debug('postcodes.io error', e); }
 
   return [];
 }
+
 
 
 
