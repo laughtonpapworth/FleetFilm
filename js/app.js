@@ -1709,34 +1709,53 @@ async function loadAddressesAdmin(){
   const snap = await db.collection('locations').orderBy('name').get();
 
   if (snap.empty) {
-    if (msg){ msg.textContent = 'No saved addresses yet.'; msg.classList.remove('hidden'); }
-    return;
+    if (msg){
+      msg.textContent = 'No saved addresses yet.';
+      msg.classList.remove('hidden');
+    }
+  } else {
+    if (msg) msg.classList.add('hidden');
+
+    snap.docs.forEach(d=>{
+      const l = { id:d.id, ...d.data() };
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${l.name || ''}</td>
+        <td>${l.address || ''}</td>
+        <td>${l.city || ''}</td>
+        <td>${l.postcode || ''}</td>
+        <td>
+          <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
+          <button class="btn btn-danger" data-del="${l.id}">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
   }
-  if (msg) msg.classList.add('hidden');
 
-  snap.docs.forEach(d=>{
-    const l = { id:d.id, ...d.data() };
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${l.name || ''}</td>
-      <td>${l.address || ''}</td>
-      <td>${l.city || ''}</td>
-      <td>${l.postcode || ''}</td>
-      <td>
-        <button class="btn btn-ghost" data-edit="${l.id}">Edit</button>
-        <button class="btn btn-danger" data-del="${l.id}">Delete</button>
-      </td>`;
-    tbody.appendChild(tr);
-  });
-
-  tbody.addEventListener('click', async (e)=>{
+  // One delegated handler – don't stack listeners
+  tbody.onclick = async (e)=>{
     const editBtn = e.target.closest('button[data-edit]');
-    const delBtn = e.target.closest('button[data-del]');
+    const delBtn  = e.target.closest('button[data-del]');
+
     if (editBtn){
       const id = editBtn.dataset.edit;
-      await showAddLocationModal({ id });
+      const snap = await db.collection('locations').doc(id).get();
+      const data = snap.exists ? snap.data() : {};
+
+      await showAddLocationModal({
+        id,
+        name:     data.name || '',
+        postcode: data.postcode || '',
+        house:    data.house || '',
+        street:   data.street || data.address || '',
+        town:     data.town || data.city || '',
+        county:   data.county || ''
+      });
+
       loadAddressesAdmin();
+      return;
     }
+
     if (delBtn){
       const id = delBtn.dataset.del;
       if (confirm('Delete this address?')){
@@ -1744,10 +1763,24 @@ async function loadAddressesAdmin(){
         loadAddressesAdmin();
       }
     }
-  });
+  };
 
-  document.getElementById('addr-refresh')?.addEventListener('click', loadAddressesAdmin);
+  // Add address button
+  const addBtn = document.getElementById('addr-add');
+  if (addBtn){
+    addBtn.onclick = async ()=>{
+      const created = await showAddLocationModal();
+      if (created) loadAddressesAdmin();
+    };
+  }
+
+  // Refresh button
+  const refBtn = document.getElementById('addr-refresh');
+  if (refBtn){
+    refBtn.onclick = loadAddressesAdmin;
+  }
 }
+
 
 /* =================== Admin actions =================== */
 async function adminAction(action, filmId){
