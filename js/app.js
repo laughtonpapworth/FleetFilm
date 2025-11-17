@@ -1511,7 +1511,9 @@ const actions = `
     <button class="btn btn-ghost" data-vote="0" data-id="${f.id}" aria-pressed="${myVoteVal===0}">🤷 Undecided</button>
     <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
   </div>
-  <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>
+  <div class="badge">Yes: ${yes}</div>
+  <div class="badge">No: ${no}</div>
+  <div class="badge">Undecided: ${undecided}</div>
   <div style="margin-top:6px">${listVotes}</div>
   <div class="actions" style="margin-top:8px">
     <button class="btn" data-act="to-discard" data-id="${f.id}">Discard</button>
