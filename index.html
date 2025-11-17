@@ -27,7 +27,7 @@
   <!-- collapsible nav; JS adds/removes .hidden and .nav--open -->
   <nav id="nav" class="nav hidden">
     <button id="nav-submit"    data-view="submit">Submit</button>
-    <button id="nav-intake"    data-view="pending">Pending Films</button>
+    <button id="nav-intake"    data-view="pending">Film List</button>
     <button id="nav-basic"     data-view="basic">Basic Criteria</button>
     <button id="nav-viewing"   data-view="viewing">Viewing</button>
     <button id="nav-vote"      data-view="vote">Voting</button>
@@ -77,19 +77,29 @@
   <div id="signed-in" class="hidden">
 
     <!-- Pending Films -->
-    <section id="view-intake" class="card" aria-label="Pending films">
-      <h1>Pending Films</h1>
-      <div class="toolbar" id="film-toolbar">
-        <input id="filter-q" type="text" placeholder="Search title…">
-        <select id="filter-status">
-          <option value="">All stages</option>
-          <option value="intake">Unprocessed</option>
-        </select>
-        <div class="spacer"></div>
-        <button id="filter-clear" class="btn btn-ghost">Clear</button>
-      </div>
-      <div class="list" id="intake-list"></div>
-    </section>
+   <!-- Film List -->
+<section id="view-intake" class="card" aria-label="Film list">
+  <h1>Film List</h1>
+  <div class="toolbar" id="film-toolbar">
+    <input id="filter-q" type="text" placeholder="Search title…">
+    <select id="filter-status">
+      <option value="">All stages</option>
+      <option value="intake">Intake / Pending</option>
+      <option value="review_basic">Basic criteria</option>
+      <option value="viewing">Viewing</option>
+      <option value="voting">Voting</option>
+      <option value="uk_check">UK distributor</option>
+      <option value="greenlist">Green list</option>
+      <option value="next_programme">Next programme</option>
+      <option value="discarded">Discarded</option>
+      <option value="archived">Archived</option>
+    </select>
+    <div class="spacer"></div>
+    <button id="filter-clear" class="btn btn-ghost">Clear</button>
+  </div>
+  <div class="list" id="intake-list"></div>
+</section>
+
 
     <!-- Submit -->
     <section id="view-submit" class="card hidden" aria-label="Submit film">
@@ -113,10 +123,14 @@
     </section>
 
     <!-- Viewing -->
-    <section id="view-viewing" class="card hidden" aria-label="Viewing queue">
-      <h1>Viewing</h1>
-      <div class="list" id="viewing-list"></div>
-    </section>
+<section id="view-viewing" class="card hidden" aria-label="Viewing queue">
+  <h1>Viewing</h1>
+  <div class="toolbar">
+    <button class="btn btn-ghost btn-export-programme">Export Next Programme CSV</button>
+  </div>
+  <div class="list" id="viewing-list"></div>
+</section>
+
 
     <!-- Voting -->
     <section id="view-vote" class="card hidden" aria-label="Voting">
@@ -136,11 +150,13 @@
       <div class="list" id="green-list"></div>
     </section>
 
-    <!-- Next Programme -->
-    <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
-      <h1>Next Programme</h1>
-      <div class="list" id="nextprog-list"></div>
-    </section>
+ <section id="view-nextprog" class="card hidden" aria-label="Next Programme">
+  <h1>Next Programme</h1>
+  <div class="toolbar">
+    <button class="btn btn-ghost btn-export-programme">Export Next Programme CSV</button>
+  </div>
+  <div class="list" id="nextprog-list"></div>
+</section>
 
     <!-- Discarded -->
     <section id="view-discarded" class="card hidden" aria-label="Discarded">
@@ -148,11 +164,15 @@
       <div class="list" id="discarded-list"></div>
     </section>
 
-    <!-- Archive -->
-    <section id="view-archive" class="card hidden" aria-label="Archive">
-      <h1>Archive</h1>
-      <div class="list" id="archive-list"></div>
-    </section>
+<!-- Archive -->
+<section id="view-archive" class="card hidden" aria-label="Archive">
+  <h1>Archive</h1>
+  <div class="toolbar">
+    <button class="btn btn-ghost btn-export-programme">Export Next Programme CSV</button>
+  </div>
+  <div class="list" id="archive-list"></div>
+</section>
+
 
     <!-- Addresses (admin) -->
     <section id="view-addresses" class="card hidden" aria-label="Saved addresses">
