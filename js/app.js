@@ -375,6 +375,15 @@ function attachHandlers(){
     });
   }
 
+     // Export Next Programme CSV (button appears on multiple views)
+  document.querySelectorAll('.btn-export-programme').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      exportNextProgrammeCsv();
+    });
+  });
+
+
   // Hash router
   window.addEventListener('hashchange', routerFromHash);
 
@@ -942,6 +951,78 @@ async function fetchByStatus(status){
   return docs;
 }
 
+function humanStatus(status){
+  switch(status){
+    case 'intake':          return 'Pending';
+    case 'review_basic':    return 'Basic criteria';
+    case 'viewing':         return 'Viewing';
+    case 'voting':          return 'Voting';
+    case 'uk_check':        return 'UK check';
+    case 'greenlist':       return 'Green list';
+    case 'next_programme':  return 'Next programme';
+    case 'discarded':       return 'Discarded';
+    case 'archived':        return 'Archived';
+    default:                return status || '';
+  }
+}
+
+async function exportNextProgrammeCsv(){
+  try{
+    const docs = await fetchByStatus('next_programme');
+    if(!docs.length){
+      alert('No films in Next Programme to export.');
+      return;
+    }
+
+    const rows = [];
+    const csvSafe = (v) => {
+      const s = (v === undefined || v === null) ? '' : String(v);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+
+    rows.push([
+      'Title','Year','Runtime (min)','Distributor',
+      'Viewing date','Viewing time','Viewing location','Address',
+      'Synopsis','Notes'
+    ].join(','));
+
+    docs.forEach(doc=>{
+      const f = { id: doc.id, ...doc.data() };
+      const vd = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
+        ? f.viewingDate.toDate().toISOString().slice(0,10)
+        : '';
+
+      rows.push([
+        csvSafe(f.title),
+        csvSafe(f.year),
+        csvSafe(f.runtimeMinutes),
+        csvSafe(f.distributor),
+        csvSafe(vd),
+        csvSafe(f.viewingTime),
+        csvSafe(f.viewingLocationName),
+        csvSafe(f.viewingLocationAddress),
+        csvSafe(f.synopsis),
+        csvSafe(f.notes)
+      ].join(','));
+    });
+
+    const blob = new Blob([rows.join('\n')], { type:'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `fleetfilm-next-programme-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e){
+    console.error('Export failed', e);
+    alert('Failed to export Next Programme CSV.');
+  }
+}
+
+
 /* =================== Rendering helpers =================== */
 function pendingCard(f, actionsHtml=''){
   const year = f.year ? `(${f.year})` : '';
@@ -985,22 +1066,51 @@ function detailCard(f, actionsHtml=''){
 
 /* =================== Pending Films =================== */
 async function loadPending(){
-  const docs = await fetchByStatus('intake');
-  let films = docs.map(d=>({ id:d.id, ...d.data() }));
-  if(filterState.q){ films = films.filter(x => (x.title||'').toLowerCase().includes(filterState.q)); }
+  // All films, then filter in-memory
+  const snap = await db.collection('films').get();
+  let films = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+
+  // Filter by status (from dropdown)
+  if(filterState.status){
+    films = films.filter(f => f.status === filterState.status);
+  }
+
+  // Filter by search query
+  if(filterState.q){
+    films = films.filter(x => (x.title || '').toLowerCase().includes(filterState.q));
+  }
+
+  // Sort by title
+  films.sort((a,b) => (a.title || '').localeCompare(b.title || ''));
 
   els.pendingList.innerHTML = '';
-  if(!films.length){ els.pendingList.innerHTML = '<div class="notice">Nothing pending.</div>'; return; }
+  if(!films.length){
+    els.pendingList.innerHTML = '<div class="notice">No films match the current filters.</div>';
+    return;
+  }
 
   films.forEach(f=>{
-    const actions = `
-      <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
-      <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
-      <button class="btn" data-archive="${f.id}">Archive</button>
-    `;
+    const statusLabel = humanStatus(f.status);
+
+    // Only allow pipeline actions from here for true “pending/intake”
+    let actions = '';
+    if(f.status === 'intake'){
+      actions += `
+        <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
+        <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
+        <button class="btn" data-archive="${f.id}">Archive</button>
+      `;
+    }
+
+    // Status badge always shown
+    if(statusLabel){
+      actions += `<span class="badge">${statusLabel}</span>`;
+    }
+
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
+  // Action handlers (only relevant for intake)
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const id = btn.dataset.next;
@@ -1028,6 +1138,7 @@ async function loadPending(){
 
   setupPendingFilters();
 }
+
 
 /* =================== BASIC =================== */
 async function loadBasic(){
@@ -1372,23 +1483,29 @@ async function loadVote(){
       return parts.join(' ');
     })();
 
-    let myVoteVal = 0;
-    if(my){
-      const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
-      if(vSnap.exists) myVoteVal = vSnap.data().value || 0;
-    }
+let myVoteVal = null;
+let hasVote = false;
+if(my){
+  const vSnap = await db.collection('films').doc(f.id).collection('votes').doc(my).get();
+  if(vSnap.exists){
+    hasVote = true;
+    myVoteVal = (typeof vSnap.data().value === 'number') ? vSnap.data().value : 0;
+  }
+}
 
-    const actions = `
-      <div class="actions" role="group" aria-label="Vote buttons">
-        <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
-        <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
-      </div>
-      <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>
-      <div style="margin-top:6px">${listVotes}</div>
-      <div class="actions" style="margin-top:8px">
-        <button class="btn" data-act="to-discard" data-id="${f.id}">Discard</button>
-      </div>
-    `;
+const actions = `
+  <div class="actions" role="group" aria-label="Vote buttons">
+    <button class="btn btn-ghost" data-vote="1" data-id="${f.id}" aria-pressed="${myVoteVal===1}">👍 Yes</button>
+    <button class="btn btn-ghost" data-vote="0" data-id="${f.id}" aria-pressed="${myVoteVal===0}">🤷 Undecided</button>
+    <button class="btn btn-ghost" data-vote="-1" data-id="${f.id}" aria-pressed="${myVoteVal===-1}">👎 No</button>
+  </div>
+  <div class="badge">Yes: ${yes}</div> <div class="badge">No: ${no}</div>
+  <div style="margin-top:6px">${listVotes}</div>
+  <div class="actions" style="margin-top:8px">
+    <button class="btn" data-act="to-discard" data-id="${f.id}">Discard</button>
+  </div>
+`;
+
     els.voteList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   }
 
@@ -1509,18 +1626,44 @@ async function archiveAllNextProg(){
 async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
-  if(!docs.length){ els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>'; return; }
+  if(!docs.length){
+    els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>';
+    return;
+  }
+
   docs.forEach(doc=>{
     const f = { id: doc.id, ...doc.data() };
     const actions = `
       <div class="actions">
         <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Pending</button>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
+      </div>
+      <div class="form-grid" style="margin-top:8px">
+        <label class="span-2">
+          Reason for discard
+          <textarea rows="2" data-discard-reason="${f.id}" placeholder="Why was this film discarded?">${f.discardedReason || ''}</textarea>
+        </label>
+        <button class="btn span-2" data-save-discard-reason="${f.id}">Save comment</button>
+      </div>
+    `;
     els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.discardedList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+
+  // Restore button
+  els.discardedList.querySelectorAll('button[data-act="restore"]').forEach(b=>{
+    b.addEventListener('click', ()=>adminAction('restore', b.dataset.id));
+  });
+
+  // Save discard reason
+  els.discardedList.querySelectorAll('button[data-save-discard-reason]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.saveDiscardReason;
+      const textarea = els.discardedList.querySelector(`textarea[data-discard-reason="${id}"]`);
+      const reason = (textarea && textarea.value ? textarea.value.trim() : '');
+      await db.collection('films').doc(id).update({ discardedReason: reason });
+      // optional: tiny visual feedback
+      btn.textContent = 'Saved';
+      setTimeout(()=>{ btn.textContent = 'Save comment'; }, 1500);
+    });
   });
 }
 
