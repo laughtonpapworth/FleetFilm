@@ -1833,31 +1833,42 @@ async function adminAction(action, filmId){
 
 /* =================== Boot =================== */
 async function boot(){
-  const ok = await waitForFirebaseAndConfig(10000);
-  if(!ok){ alert('Missing Firebase config'); return; }
-
-  try { initFirebaseOnce(); } catch(e){ alert('Missing Firebase config'); return; }
-
-  // ✅ Complete Google redirect ASAP (mobile needs this)
   try {
-    await firebase.auth().getRedirectResult();
-  } catch (err) {
-    console.warn('Redirect error:', err && err.message);
+    // Initialise Firebase (uses getFirebaseConfig under the hood)
+    initFirebaseOnce();
+  } catch (e) {
+    console.error('Firebase init failed:', e);
+    alert('Missing Firebase config or Firebase SDK failed to load.');
+    return;
   }
 
+  // Complete any Google redirect flow (mobile)
+  try {
+    await auth.getRedirectResult();
+  } catch (err) {
+    console.warn('Redirect sign-in error:', err && err.message);
+  }
+
+  // Wire up all the click handlers (including Sign in buttons)
   attachHandlers();
 
-  firebase.auth().onAuthStateChanged(async (u) => {
+  // Auth state listener to flip between signed-in / signed-out UI
+  auth.onAuthStateChanged(async (u) => {
     state.user = u;
-    if(!u){
+    if (!u) {
       showSignedIn(false);
       location.hash = 'submit';
       return;
     }
+
     await ensureUserDoc(u);
     showSignedIn(true);
     routerFromHash();
   });
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+// Make sure boot actually runs once the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  boot().catch(err => console.error('Boot error:', err));
+});
+
