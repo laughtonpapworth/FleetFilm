@@ -1458,30 +1458,42 @@ async function loadVote(){
 
   for(const doc of docs){
     const f = { id: doc.id, ...doc.data() };
-    const vs = await db.collection('films').doc(f.id).collection('votes').get();
-    let yes=0, no=0;
-    const voters = [];
-    vs.forEach(v=>{
-      const d = v.data(); const val = d.value;
-      if(val===1) yes+=1;
-      if(val===-1) no+=1;
-      voters.push({ uid:v.id, value:val, at:d.createdAt });
-    });
+const vs = await db.collection('films').doc(f.id).collection('votes').get();
+let yes = 0, no = 0, undecided = 0;
+const voters = [];
+vs.forEach(v=>{
+  const d = v.data();
+  const val = d.value;
 
-    const listVotes = await (async ()=>{
-      if(!voters.length) return '';
-      const parts = [];
-      for(const v of voters){
-        if(!nameCache[v.uid]){
-          const u = await db.collection('users').doc(v.uid).get();
-          nameCache[v.uid] = u.exists ? (u.data().displayName || u.data().email || v.uid) : v.uid;
-        }
-        const who = nameCache[v.uid];
-        const what = v.value===1 ? 'Yes' : v.value===-1 ? 'No' : '—';
-        parts.push(`<span class="badge">${who}: ${what}</span>`);
-      }
-      return parts.join(' ');
-    })();
+  if (val === 1)       yes += 1;
+  else if (val === -1) no += 1;
+  else if (val === 0)  undecided += 1;
+
+  voters.push({ uid: v.id, value: val, at: d.createdAt });
+});
+
+
+const listVotes = await (async ()=>{
+  if(!voters.length) return '';
+  const parts = [];
+  for(const v of voters){
+    if(!nameCache[v.uid]){
+      const u = await db.collection('users').doc(v.uid).get();
+      nameCache[v.uid] = u.exists ? (u.data().displayName || u.data().email || v.uid) : v.uid;
+    }
+    const who = nameCache[v.uid];
+
+    let what;
+    if (v.value === 1)      what = 'Yes';
+    else if (v.value === -1) what = 'No';
+    else if (v.value === 0)  what = 'U';   // ← Undecided
+    else                     what = '—';
+
+    parts.push(`<span class="badge">${who}: ${what}</span>`);
+  }
+  return parts.join(' ');
+})();
+
 
 let myVoteVal = null;
 let hasVote = false;
