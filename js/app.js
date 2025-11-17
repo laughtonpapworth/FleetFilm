@@ -1832,29 +1832,37 @@ async function adminAction(action, filmId){
 }
 
 /* =================== Boot =================== */
+/* =================== Boot =================== */
 async function boot(){
+  console.log('[boot] starting');
+
+  // Initialise Firebase once
   try {
-    // Initialise Firebase (uses getFirebaseConfig under the hood)
     initFirebaseOnce();
+    console.log('[boot] Firebase initialised');
   } catch (e) {
-    console.error('Firebase init failed:', e);
+    console.error('[boot] Firebase init failed:', e);
     alert('Missing Firebase config or Firebase SDK failed to load.');
     return;
   }
 
-  // Complete any Google redirect flow (mobile)
+  // Complete Google redirect flow (important on mobile)
   try {
     await auth.getRedirectResult();
+    console.log('[boot] redirect result processed');
   } catch (err) {
-    console.warn('Redirect sign-in error:', err && err.message);
+    console.warn('[boot] Redirect sign-in error:', err && err.message);
   }
 
-  // Wire up all the click handlers (including Sign in buttons)
+  // Wire up buttons (Sign in, Google sign in, nav, etc.)
   attachHandlers();
+  console.log('[boot] handlers attached');
 
-  // Auth state listener to flip between signed-in / signed-out UI
+  // Auth state listener
   auth.onAuthStateChanged(async (u) => {
+    console.log('[boot] auth state changed:', !!u);
     state.user = u;
+
     if (!u) {
       showSignedIn(false);
       location.hash = 'submit';
@@ -1867,8 +1875,6 @@ async function boot(){
   });
 }
 
-// Make sure boot actually runs once the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  boot().catch(err => console.error('Boot error:', err));
+  boot().catch(err => console.error('[boot] error:', err));
 });
-
