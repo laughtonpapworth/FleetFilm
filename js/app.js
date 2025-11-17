@@ -1512,6 +1512,11 @@ const actions = `
   els.voteList.querySelectorAll('button[data-vote]').forEach(btn => {
     btn.addEventListener('click', () => castVote(btn.dataset.id, parseInt(btn.dataset.vote,10)));
   });
+
+  // Wire discard button in Voting
+  els.voteList.querySelectorAll('button[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => adminAction(btn.dataset.act, btn.dataset.id));
+  });
 }
 
 async function castVote(filmId, value){
