@@ -1411,15 +1411,19 @@ async function loadViewing(){
       const id = btn.dataset.id;
       const act = btn.dataset.act;
 
-      if(act === 'set-datetime'){
+      if (act === 'set-datetime') {
         sessionStorage.setItem('scheduleTarget', id);
         location.hash = 'calendar';
+        return;
+      }
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
         return;
       }
       await adminAction(act, id);
     });
   });
-}
 
 /* =================== CALENDAR PAGE =================== */
 async function loadCalendar(){
