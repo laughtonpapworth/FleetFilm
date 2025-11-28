@@ -457,16 +457,58 @@ function attachHandlers(){
 
 
 /* =================== Filters (Pending) =================== */
-const filterState = { q:'', status:'' };
+const filterState = {
+  q: '',
+  status: '',
+  sort: 'title-asc',   // default sort: Title A–Z
+};
 
 function setupPendingFilters(){
-  const q = document.getElementById('filter-q');
-  const s = document.getElementById('filter-status');
+  const q   = document.getElementById('filter-q');
+  const s   = document.getElementById('filter-status');
   const clr = document.getElementById('filter-clear');
-  if(q){ q.addEventListener('input', ()=>{ filterState.q = q.value.trim().toLowerCase(); loadPending(); }); }
-  if(s){ s.addEventListener('change', ()=>{ filterState.status = s.value; loadPending(); }); }
-  if(clr){ clr.addEventListener('click', ()=>{ filterState.q=''; filterState.status=''; if(q) q.value=''; if(s) s.value=''; loadPending(); }); }
+  const sort = document.getElementById('filter-sort');
+
+  // Text search
+  if (q) {
+    q.addEventListener('input', () => {
+      filterState.q = q.value.trim().toLowerCase();
+      loadPending();
+    });
+  }
+
+  // Status dropdown
+  if (s) {
+    s.addEventListener('change', () => {
+      filterState.status = s.value;
+      loadPending();
+    });
+  }
+
+  // Sort dropdown
+  if (sort) {
+    sort.addEventListener('change', () => {
+      filterState.sort = sort.value || 'title-asc';
+      loadPending();
+    });
+  }
+
+  // Clear button – also reset sort
+  if (clr) {
+    clr.addEventListener('click', () => {
+      filterState.q = '';
+      filterState.status = '';
+      filterState.sort = 'title-asc';
+
+      if (q) q.value = '';
+      if (s) s.value = '';
+      if (sort) sort.value = 'title-asc';
+
+      loadPending();
+    });
+  }
 }
+
 
 /* =================== OMDb helpers =================== */
 function getOmdbKey(){
@@ -1079,7 +1121,6 @@ function detailCard(f, actionsHtml=''){
 }
 
 /* =================== Pending Films =================== */
-/* =================== Pending Films =================== */
 async function loadPending(){
   // All films, then filter in-memory
   const snap = await db.collection('films').get();
@@ -1092,13 +1133,44 @@ async function loadPending(){
 
   // Filter by search query
   if (filterState.q) {
-    films = films.filter(x =>
-      (x.title || '').toLowerCase().includes(filterState.q)
-    );
+    const q = filterState.q;
+    films = films.filter(x => (x.title || '').toLowerCase().includes(q));
   }
 
-  // Sort by title
-  films.sort((a,b) => (a.title || '').localeCompare(b.title || ''));
+  // Sort according to selected mode
+  films.sort((a, b) => {
+    const mode = filterState.sort || 'title-asc';
+
+    // Safe helpers
+    const titleA = (a.title || '').toString();
+    const titleB = (b.title || '').toString();
+    const yearA  = typeof a.year === 'number' ? a.year : (parseInt(a.year, 10) || 0);
+    const yearB  = typeof b.year === 'number' ? b.year : (parseInt(b.year, 10) || 0);
+    const createdA = (a.createdAt && typeof a.createdAt.toMillis === 'function')
+      ? a.createdAt.toMillis() : 0;
+    const createdB = (b.createdAt && typeof b.createdAt.toMillis === 'function')
+      ? b.createdAt.toMillis() : 0;
+
+    switch (mode) {
+      case 'title-asc':
+        return titleA.localeCompare(titleB);
+      case 'title-desc':
+        return titleB.localeCompare(titleA);
+
+      case 'year-desc':   // newest release first
+        return yearB - yearA;
+      case 'year-asc':    // oldest release first
+        return yearA - yearB;
+
+      case 'created-desc': // newest added first
+        return createdB - createdA;
+      case 'created-asc':  // oldest added first
+        return createdA - createdB;
+
+      default:
+        return titleA.localeCompare(titleB);
+    }
+  });
 
   els.pendingList.innerHTML = '';
   if (!films.length) {
@@ -1109,9 +1181,8 @@ async function loadPending(){
   films.forEach(f => {
     const statusLabel = humanStatus(f.status);
 
-    let actions = '';
-
     // Only allow pipeline actions from here for true “pending/intake”
+    let actions = '';
     if (f.status === 'intake') {
       actions += `
         <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
@@ -1120,55 +1191,63 @@ async function loadPending(){
       `;
     }
 
+    // Admin-only edit/delete
+    if (isAdmin()) {
+      actions += `
+        <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
+        <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+      `;
+    }
+
     // Status badge always shown
     if (statusLabel) {
       actions += `<span class="badge">${statusLabel}</span>`;
     }
 
-    // ----- ADMIN Edit + Delete -----
-    if (isAdmin()) {
-      actions += `
-        <button class="btn btn-ghost" data-act="edit-basic" data-id="${f.id}">Edit</button>
-        <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
-      `;
-    }
-
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  // ------------------------------
-  // Action handlers (intake only)
-  // ------------------------------
+  // Intake actions (pipeline buttons)
   els.pendingList.querySelectorAll('button[data-next]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await db.collection('films').doc(btn.dataset.next).update({ status:'review_basic' });
+      const id = btn.dataset.next;
+      const ref = db.collection('films').doc(id);
+      await ref.update({ status:'review_basic' });
       loadPending();
     });
   });
 
   els.pendingList.querySelectorAll('button[data-discard]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await db.collection('films').doc(btn.dataset.discard).update({ status:'discarded' });
+      const id = btn.dataset.discard;
+      await db.collection('films').doc(id).update({ status:'discarded' });
       loadPending();
     });
   });
 
   els.pendingList.querySelectorAll('button[data-archive]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await db.collection('films').doc(btn.dataset.archive).update({
-        status:'archived',
-        archivedFrom:'intake'
-      });
+      const id = btn.dataset.archive;
+      await db.collection('films').doc(id).update({ status:'archived', archivedFrom:'intake' });
       loadPending();
     });
   });
 
-  // ------------------------------
-  // Admin actions (edit-basic, delete-film)
-  // ------------------------------
+  // Admin edit/delete buttons
   els.pendingList.querySelectorAll('button[data-act]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      adminAction(btn.dataset.act, btn.dataset.id);
+    btn.addEventListener('click', async () => {
+      const act = btn.dataset.act;
+      const id  = btn.dataset.id;
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
+        return;
+      }
+      if (act === 'delete-film') {
+        if (!isAdmin()) return;
+        await deleteFilmCompletely(id); // you already have this helper in voting / elsewhere
+        return;
+      }
     });
   });
 
