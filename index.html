@@ -20,30 +20,40 @@
   <!-- Start collapsed; JS will show/hide this whole nav by login state -->
 <header class="header">
   <div class="brand">
-    <img class="logo" src="img/FFLogo.png" alt="Fleet Film">
-    <div class="title">Fleet Film</div>
+    <img src="img/logo.png" alt="Fleet Film logo" class="brand-logo">
+    <div class="brand-text">
+      <div class="brand-title">Fleet Film</div>
+      <div class="brand-subtitle">Programming pipeline</div>
+    </div>
   </div>
 
-  <!-- collapsible nav; JS adds/removes .hidden and .nav--open -->
-  <nav id="nav" class="nav hidden">
-    <button id="nav-submit"    data-view="submit">Submit</button>
-    <button id="nav-intake"    data-view="pending">Film List</button>
-    <button id="nav-basic"     data-view="basic">Basic Criteria</button>
-    <button id="nav-viewing"   data-view="viewing">Viewing</button>
-    <button id="nav-vote"      data-view="vote">Voting</button>
-    <button id="nav-uk"        data-view="uk">UK Distributor</button>
-    <button id="nav-green"     data-view="green">Green List</button>
-    <button id="nav-nextprog"  data-view="nextprog">Next Programme</button>
-    <button id="nav-discarded" data-view="discarded">Discarded</button>
-    <button id="nav-archive"   data-view="archive">Archive</button>
-    <button id="nav-calendar"  data-view="calendar">Calendar</button>
-    <button id="nav-addresses" data-view="addresses">Addresses</button>
+  <!-- Main nav -->
+  <nav class="nav hidden" id="nav" aria-label="Main navigation">
+    <button class="btn-pill" id="nav-submit" data-view="submit">Submit</button>
+    <button class="btn-pill" id="nav-intake" data-view="pending">Film List</button>
+    <button class="btn-pill" id="nav-basic" data-view="basic">Basic Criteria</button>
+    <button class="btn-pill" id="nav-viewing" data-view="viewing">Viewing</button>
+    <button class="btn-pill" id="nav-vote" data-view="vote">Voting</button>
+    <button class="btn-pill" id="nav-uk" data-view="uk">UK Distributor</button>
+    <button class="btn-pill" id="nav-green" data-view="green">Green List</button>
+    <button class="btn-pill" id="nav-nextprog" data-view="nextprog">Next Programme</button>
+    <button class="btn-pill" id="nav-discarded" data-view="discarded">Discarded</button>
+    <button class="btn-pill" id="nav-archive" data-view="archive">Archive</button>
+    <button class="btn-pill" id="nav-calendar" data-view="calendar">Calendar</button>
+    <button class="btn-pill" id="nav-addresses" data-view="addresses">Addresses</button>
+
+    <span class="nav-spacer"></span>
+
+    <!-- Sign out now lives in the nav so we can hide the big header button -->
+    <button class="btn-link nav-signout" id="btn-signout">
+      Sign out
+    </button>
   </nav>
 
-  <div class="header-actions">
-    <button id="nav-toggle" class="btn btn-ghost">Menu</button>
-    <button id="btn-signout" class="btn btn-ghost">Sign out</button>
-  </div>
+  <!-- Mobile-only menu button -->
+  <button class="btn btn-ghost header-menu" id="nav-toggle" aria-label="Toggle navigation">
+    Menu
+  </button>
 </header>
 
 
