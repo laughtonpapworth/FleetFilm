@@ -77,12 +77,12 @@
   <!-- Signed in -->
   <div id="signed-in" class="hidden">
 
-    <!-- Pending Films -->
-   <!-- Film List -->
+<!-- Film List -->
 <section id="view-intake" class="card" aria-label="Film list">
   <h1>Film List</h1>
   <div class="toolbar" id="film-toolbar">
     <input id="filter-q" type="text" placeholder="Search title…">
+
     <select id="filter-status">
       <option value="">All stages</option>
       <option value="intake">Intake / Pending</option>
@@ -95,11 +95,24 @@
       <option value="discarded">Discarded</option>
       <option value="archived">Archived</option>
     </select>
+
+    <!-- New sort dropdown -->
+    <select id="filter-sort">
+      <option value="title-asc">Title A–Z</option>
+      <option value="title-desc">Title Z–A</option>
+      <option value="created-desc">Date added (newest first)</option>
+      <option value="created-asc">Date added (oldest first)</option>
+      <option value="year-desc">Release year (newest first)</option>
+      <option value="year-asc">Release year (oldest first)</option>
+    </select>
+
     <div class="spacer"></div>
     <button id="filter-clear" class="btn btn-ghost">Clear</button>
   </div>
+
   <div class="list" id="intake-list"></div>
 </section>
+
 
 
     <!-- Submit -->
