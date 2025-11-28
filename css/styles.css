@@ -101,6 +101,10 @@ a:hover{ text-decoration:underline; }
   border-color:#cbd5f5;
 }
 
+.card--highlight {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .nav button.active{
   background:var(--accent);
   color:var(--accent-ink);
