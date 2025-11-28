@@ -940,7 +940,8 @@ async function submitFilm(){
   const base = {
     title, year,
     synopsis: '',
-    status: 'intake',
+    // 🔁 NEW FLOW: go straight into Basic Criteria
+    status: 'review_basic',
     createdBy: state.user.uid,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     runtimeMinutes: null,
@@ -986,15 +987,18 @@ async function submitFilm(){
   try{
     await db.collection('films').add(base);
     if(els.submitMsg){
-      els.submitMsg.textContent = 'Added to Pending Films.';
+      els.submitMsg.textContent = 'Added to Basic Criteria.';
       els.submitMsg.classList.remove('hidden');
       setTimeout(()=>els.submitMsg.classList.add('hidden'), 1800);
     }
     if(els.title) els.title.value='';
     if(els.year) els.year.value='';
+    // You can leave this on Film List, films will still show there
+    // If you’d prefer to jump straight to Basic Criteria tab, change to: setView('basic');
     setView('pending');
   }catch(e){ alert(e.message); }
 }
+
 
 /* =================== Fetch helpers =================== */
 async function fetchByStatus(status){
