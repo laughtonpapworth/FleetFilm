@@ -1297,6 +1297,7 @@ async function loadBasic(){
 }
 
 /* =================== VIEWING =================== */
+/* =================== VIEWING =================== */
 async function loadViewing(){
   els.viewingList.innerHTML = '';
 
@@ -1338,13 +1339,11 @@ async function loadViewing(){
           <input type="time" data-edit="viewingTime" data-id="${f.id}" value="${f.viewingTime||''}">
         </label>
 
-            <div class="actions span-2" style="margin-top:4px">
+        <div class="actions span-2" style="margin-top:4px">
           <button class="btn btn-primary" data-act="set-datetime" data-id="${f.id}">Open Calendar</button>
           <button class="btn btn-ghost" data-act="to-voting" data-id="${f.id}">→ Voting</button>
           <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
-          ${isAdmin() ? `<button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>` : ''}
         </div>
-
       </div>
     `;
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
@@ -1411,19 +1410,16 @@ async function loadViewing(){
       const id = btn.dataset.id;
       const act = btn.dataset.act;
 
-      if (act === 'set-datetime') {
+      if(act === 'set-datetime'){
         sessionStorage.setItem('scheduleTarget', id);
         location.hash = 'calendar';
-        return;
-      }
-      if (act === 'edit-film') {
-        if (!isAdmin()) return;
-        await openEditFilmModal(id);
         return;
       }
       await adminAction(act, id);
     });
   });
+}
+
 
 /* =================== CALENDAR PAGE =================== */
 async function loadCalendar(){
