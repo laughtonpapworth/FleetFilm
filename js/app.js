@@ -1258,43 +1258,112 @@ async function openEditFilmModal(filmId) {
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
-  if(!docs.length){ els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>'; return; }
-  docs.forEach(doc=>{
+
+  if (!docs.length) {
+    els.basicList.innerHTML = '<div class="notice">Nothing awaiting basic checks.</div>';
+    return;
+  }
+
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
     const form = `
       <div class="form-grid">
-        <label>Runtime Minutes<input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" /></label>
-        <label>Language<input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" /></label>
-        <label>UK Age Rating<input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, NR" /></label>
-        <label>Genre<input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" /></label>
-        <label>Country<input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" /></label>
-        <label>Disk Available?
-          <select data-edit="hasDisk" data-id="${f.id}"><option value="false"${f.hasDisk?'':' selected'}>No</option><option value="true"${f.hasDisk?' selected':''}>Yes</option></select>
+        <label>Runtime Minutes
+          <input type="number" data-edit="runtimeMinutes" data-id="${f.id}" value="${f.runtimeMinutes ?? ''}" />
         </label>
-        <label>Where to see<input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD..." /></label>
-        <label class="span-2">Synopsis<textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea></label>
+
+        <label>Language
+          <input type="text" data-edit="language" data-id="${f.id}" value="${f.language || ''}" />
+        </label>
+
+        <label>UK Age Rating
+          <input type="text" data-edit="ukAgeRating" data-id="${f.id}" value="${f.ukAgeRating || ''}"
+                 placeholder="U, PG, 12A, 12, 15, 18, NR" />
+        </label>
+
+        <label>Genre
+          <input type="text" data-edit="genre" data-id="${f.id}" value="${f.genre || ''}" />
+        </label>
+
+        <label>Country
+          <input type="text" data-edit="country" data-id="${f.id}" value="${f.country || ''}" />
+        </label>
+
+        <label>Disk Available?
+          <select data-edit="hasDisk" data-id="${f.id}">
+            <option value="false"${f.hasDisk ? '' : ' selected'}>No</option>
+            <option value="true"${f.hasDisk ? ' selected' : ''}>Yes</option>
+          </select>
+        </label>
+
+        <label>Where to see
+          <input type="text" data-edit="availability" data-id="${f.id}" value="${f.availability || ''}"
+                 placeholder="Apple TV, Netflix, DVD..." />
+        </label>
+
+        <label class="span-2">Synopsis
+          <textarea data-edit="synopsis" data-id="${f.id}" placeholder="Short description">${f.synopsis || ''}</textarea>
+        </label>
+
         <div class="actions span-2">
-          <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">Validate + → Viewing</button>
-          <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">Discard</button>
+          <button class="btn btn-primary" data-act="basic-validate" data-id="${f.id}">
+            Validate + → Viewing
+          </button>
+          <button class="btn btn-danger" data-act="to-discard" data-id="${f.id}">
+            Discard
+          </button>
+
+          ${isAdmin() ? `
+          <button class="btn btn-ghost" data-act="edit-basic" data-id="${f.id}">
+            Edit
+          </button>
+          <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">
+            Delete
+          </button>
+          ` : ''}
         </div>
       </div>
     `;
+
     els.basicList.insertAdjacentHTML('beforeend', detailCard(f, form));
   });
-  els.basicList.querySelectorAll('[data-edit]').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
+
+  // Inline field edits
+  els.basicList.querySelectorAll('[data-edit]').forEach(inp => {
+    inp.addEventListener('change', async () => {
       const id = inp.dataset.id;
       let val = inp.value;
       const field = inp.dataset.edit;
-      if(field==='runtimeMinutes') val = parseInt(val||'0',10) || null;
-      if(field==='hasDisk') val = (val==='true');
+
+      if (field === 'runtimeMinutes') {
+        val = parseInt(val || '0', 10) || null;
+      }
+      if (field === 'hasDisk') {
+        val = (val === 'true');
+      }
+
       await db.collection('films').doc(id).update({ [field]: val });
     });
   });
-  els.basicList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+
+  // Action buttons (validate, discard, edit-basic, delete-film)
+  els.basicList.querySelectorAll('button[data-id]').forEach(b => {
+    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
   });
+
+  // If we came here from "Edit" on another page, scroll to and highlight that film
+  const targetId = sessionStorage.getItem('editTarget');
+  if (targetId) {
+    const card = els.basicList.querySelector(`[data-film-card="${targetId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      card.classList.add('card--highlight');
+      setTimeout(() => card.classList.remove('card--highlight'), 1800);
+    }
+    sessionStorage.removeItem('editTarget');
+  }
 }
+
 
 /* =================== VIEWING =================== */
 /* =================== VIEWING =================== */
@@ -1926,10 +1995,31 @@ async function loadAddressesAdmin(){
 /* =================== Admin actions =================== */
 async function adminAction(action, filmId){
   const ref = db.collection('films').doc(filmId);
-  try{
-    if(action==='to-discard') await ref.update({ status:'discarded' });
-    if(action==='restore')    await ref.update({ status:'intake' });
-    if(action==='to-voting')  await ref.update({ status:'voting' });
+
+  try {
+    // ----- Permanent delete (admin only) -----
+    if (action === 'delete-film') {
+      if (!isAdmin()) {
+        alert('Only admins can permanently delete films.');
+        return;
+      }
+      if (!confirm('Delete this film permanently? This cannot be undone.')) return;
+      await ref.delete();
+      routerFromHash();
+      return;
+    }
+
+    // ----- Jump to Basic Criteria for editing -----
+    if (action === 'edit-basic') {
+      sessionStorage.setItem('editTarget', filmId);
+      location.hash = 'basic';
+      return;
+    }
+
+    // ----- Existing actions -----
+    if (action === 'to-discard')  await ref.update({ status:'discarded' });
+    if (action === 'restore')     await ref.update({ status:'intake' });
+    if (action === 'to-voting')   await ref.update({ status:'voting' });
 
     if (action === 'basic-validate') {
       const snap = await ref.get();
@@ -1953,23 +2043,32 @@ async function adminAction(action, filmId){
       return;
     }
 
-    if(action==='uk-yes'){
-      await ref.update({ hasUkDistributor:true, status:'greenlist', greenAt: firebase.firestore.FieldValue.serverTimestamp() });
+    if (action === 'uk-yes') {
+      await ref.update({
+        hasUkDistributor: true,
+        status: 'greenlist',
+        greenAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     }
-    if(action==='uk-no'){
+
+    if (action === 'uk-no') {
       await ref.update({ hasUkDistributor:false, status:'discarded' });
     }
 
-    if(action==='to-nextprog'){ await ref.update({ status:'next_programme' }); }
+    if (action === 'to-nextprog') {
+      await ref.update({ status:'next_programme' });
+    }
 
-    if(action==='to-archive'){
+    if (action === 'to-archive') {
       const snap2 = await ref.get();
       const cur = (snap2.exists && snap2.data().status) || '';
       await ref.update({ status:'archived', archivedFrom: cur || '' });
     }
 
     routerFromHash();
-  }catch(e){ alert(e.message); }
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 /* =================== Boot =================== */
