@@ -1,26 +1,30 @@
-/* =========================================================
-   Fleet Film Organiser – Polished Dark Theme (FleetFilm.co.uk inspired)
-   ========================================================= */
+/* ===== Fleet Film – organiser app (dark header, light body, pro look) ===== */
 
 :root{
-  /* Colour system – navy / slate / clean white */
-  --page:#0f1521;            /* dark navy background */
-  --card:#1c2533;            /* darker card bg */
-  --ink:#f1f5f9;             /* main text: very light slate */
-  --muted:#94a3b8;           /* muted slate */
-  --border:#334155;          /* soft slate divider */
-  --accent:#1e3a8a;          /* strong deep blue (Fleet Film vibe) */
-  --accent-soft:#2c4ea3;     /* softer lighter navy */
-  --accent-ink:#ffffff;
+  --page:#e5e7eb;        /* light grey page */
+  --card:#ffffff;        /* cards & forms */
+  --ink:#0f172a;         /* primary text */
+  --muted:#6b7280;       /* secondary text */
+  --border:#cbd5e1;      /* soft border */
 
-  --danger:#ef4444;
-  --warn:#f59e0b;
+  --header-bg:#020617;   /* very dark header bar */
+  --nav-pill-bg:#111827; /* nav pill background */
+  --nav-pill-hover:#1f2937;
+  --nav-pill-active:#2563eb;
+  --nav-pill-active-text:#ffffff;
+
+  --accent:#2563eb;      /* primary action blue */
+  --accent-soft:#e0edff;
+  --accent-ink:#ffffff;
+  --danger:#b91c1c;
+  --warn:#d97706;
 
   --radius-lg:16px;
   --radius-sm:10px;
 }
 
-/* Base */
+/* ========== Base ========== */
+
 *{ box-sizing:border-box; }
 
 html,body{
@@ -34,151 +38,163 @@ html,body{
 img{ max-width:100%; display:block; }
 
 a{
-  color:#60a5fa;
+  color:#2563eb;
   text-decoration:none;
 }
 a:hover{ text-decoration:underline; }
 
-/* Focus */
 :focus-visible{
-  outline:3px solid rgba(96,165,250,.5);
+  outline:3px solid rgba(37,99,235,.45);
   outline-offset:2px;
   border-radius:6px;
 }
 
-/* =========================================================
-   Header / Navigation
-   ========================================================= */
+/* ========== Header / Brand / Nav ========== */
 
 .header{
   position:sticky;
   top:0;
   z-index:40;
-  background:#151b28;
-  border-bottom:1px solid var(--border);
-  padding:12px 24px;
+  background:var(--header-bg);
+  border-bottom:1px solid #020617;
+  padding:10px 20px;
   display:flex;
   align-items:center;
   gap:20px;
+  color:#e5e7eb;
 }
 
+/* Brand block: logo + text (logo file already includes text) */
 .brand{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
 }
-
 .brand-logo{
-  height:42px;
+  height:40px;
   width:auto;
 }
 
+/* Main nav row */
 .nav{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  gap:6px;
-  margin-left:16px;
+  gap:8px;
+  margin-left:18px;
+  flex:1 1 auto; /* stretch between logo and sign-out */
 }
 
-/* Slim professional nav pills */
+/* Nav pills */
 .nav button{
   appearance:none;
-  background:#1e293b;
-  border:1px solid #334155;
-  color:#cbd5e1;
+  border:1px solid #020617;
+  background:var(--nav-pill-bg);
+  color:#e5e7eb;
   font-weight:600;
-  font-size:13px;
-  padding:7px 12px;
+  font-size:14px;
+  padding:7px 13px;
   border-radius:999px;
   cursor:pointer;
-  transition:background .15s ease, color .15s ease, border-color .15s ease;
+  white-space:nowrap;
+  box-shadow:0 1px 2px rgba(15,23,42,.4);
+  transition:
+    background .14s ease,
+    border-color .14s ease,
+    color .14s ease,
+    box-shadow .14s ease,
+    transform .08s ease;
 }
-
 .nav button:hover{
-  background:#273449;
-  border-color:#475569;
-  color:#ffffff;
+  background:var(--nav-pill-hover);
+  box-shadow:0 4px 10px rgba(15,23,42,.55);
 }
-
+.nav button:active{
+  transform:translateY(1px);
+  box-shadow:0 2px 6px rgba(15,23,42,.4);
+}
 .nav button.active{
-  background:var(--accent);
-  border-color:var(--accent);
-  color:var(--accent-ink);
+  background:var(--nav-pill-active);
+  color:var(--nav-pill-active-text);
+  border-color:var(--nav-pill-active);
+  box-shadow:0 4px 14px rgba(37,99,235,.65);
 }
 
-/* Sign-out link */
+/* Sign-out: pushed to far right, looks like a simple link */
 .nav-signout{
-  background:none;
-  border:none;
   margin-left:auto;
-  color:#94a3b8;
+  border:none;
+  background:none;
+  padding:0 0 0 16px;
+  border-left:1px solid rgba(148,163,184,.6);
   font-size:13px;
+  font-weight:500;
+  color:#cbd5f5;
   cursor:pointer;
 }
-.nav-signout:hover{ color:#ffffff; text-decoration:underline; }
-
-/* Mobile Menu Button */
-.header-menu{
-  margin-left:auto;
-  background:#1e293b;
-  border:1px solid #334155;
-  color:#cbd5e1;
-  padding:6px 12px;
-  border-radius:8px;
+.nav-signout:hover{
+  color:#e5e7eb;
+  text-decoration:underline;
 }
 
+/* Mobile header “Menu” button – visible only on mobile via media query */
+.header-menu{
+  margin-left:auto;
+}
 
-/* =========================================================
-   Layout
-   ========================================================= */
+/* ========== Layout ========== */
 
 .container{
   max-width:1100px;
-  margin:20px auto 90px;
+  margin:16px auto 80px;
   padding:0 16px;
 }
 
 .list{
   display:grid;
-  gap:14px;
+  gap:10px;
 }
 
-
-/* =========================================================
-   Cards
-   ========================================================= */
+/* ========== Cards ========== */
 
 .card{
   background:var(--card);
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  padding:20px;
-  box-shadow:0 4px 16px rgba(0,0,0,.35);
-  transition:box-shadow .15s ease, transform .15s ease;
+  padding:18px;
+  margin:12px 0;
+  box-shadow:0 4px 18px rgba(15,23,42,.12);
+  transition:box-shadow .14s ease, transform .14s ease;
+}
+.card:hover{
+  box-shadow:0 10px 26px rgba(15,23,42,.18);
+  transform:translateY(-1px);
 }
 
-.card:hover{
-  transform:translateY(-2px);
-  box-shadow:0 8px 28px rgba(0,0,0,.45);
-}
+/* Film rows */
 
 .item{
   display:grid;
   grid-template-columns:1fr auto;
-  gap:16px;
+  gap:18px;
   align-items:center;
 }
-
 .item-left{
   display:flex;
-  gap:16px;
+  gap:18px;
+  align-items:flex-start;
 }
-
+.item-right{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  justify-content:flex-end;
+}
 .item-title{
   font-weight:700;
   font-size:20px;
-  color:#ffffff;
+  margin:2px 0 4px;
 }
 
 /* Poster */
@@ -190,7 +206,7 @@ a:hover{ text-decoration:underline; }
   border:1px solid var(--border);
 }
 
-/* Details grid */
+/* Key/Value grid */
 .kv{
   display:grid;
   grid-template-columns:140px 1fr;
@@ -198,92 +214,103 @@ a:hover{ text-decoration:underline; }
   font-size:14px;
   color:var(--muted);
 }
+.kv > div:nth-child(2n){
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
 
-
-/* =========================================================
-   Buttons
-   ========================================================= */
+/* ========== Buttons ========== */
 
 .btn{
   appearance:none;
   cursor:pointer;
-  font-size:13px;
+  font-size:14px;
   font-weight:600;
-  padding:8px 13px;
+  padding:9px 13px;
   border-radius:10px;
-  background:#1e293b;
-  color:#e2e8f0;
-  border:1px solid #334155;
-  transition:background .12s ease, border-color .12s ease, transform .1s ease;
+  background:#0b1120;
+  color:#e5e7eb;
+  border:1px solid #111827;
+  transition:
+    background .14s ease,
+    border-color .14s ease,
+    color .14s ease,
+    transform .08s ease,
+    box-shadow .14s ease;
 }
-
 .btn:hover{
-  background:#2a3650;
-  border-color:#475569;
+  background:#111827;
+  box-shadow:0 3px 10px rgba(15,23,42,.35);
 }
-
 .btn:active{
   transform:translateY(1px);
+  box-shadow:0 1px 6px rgba(15,23,42,.4);
 }
 
+/* primary actions */
 .btn-primary{
   background:var(--accent);
   border-color:var(--accent);
-  color:#ffffff;
+  color:var(--accent-ink);
 }
 .btn-primary:hover{
-  background:#234693;
+  background:#1d4ed8;
 }
 
+/* soft accent */
 .btn-accent{
-  background:#374151;
-  border-color:#475569;
+  background:var(--accent-soft);
+  color:#1f2937;
+  border-color:#93c5fd;
 }
 
+/* warning / danger */
 .btn-warn{
-  background:#f59e0b;
-  border-color:#d97706;
-  color:#1c1c1c;
+  background:#fef3c7;
+  color:#92400e;
+  border-color:#facc15;
 }
-
 .btn-danger{
-  background:#ef4444;
-  border-color:#dc2626;
-  color:#ffffff;
+  background:#fee2e2;
+  color:#7f1d1d;
+  border-color:#fecaca;
 }
 
+/* ghost (outline/light) */
 .btn-ghost{
-  background:transparent;
-  border:1px solid #475569;
-  color:#cbd5e1;
+  background:#ffffff;
+  color:var(--ink);
+  border-color:var(--border);
+}
+.btn-ghost:hover{
+  background:#f9fafb;
 }
 
+/* bigger variant */
 .big{
   font-size:15px;
-  padding:11px 16px;
+  padding:11px 15px;
 }
 
-
-/* =========================================================
-   Utility
-   ========================================================= */
+/* ========== Utility ========== */
 
 .notice{
-  background:#1e293b;
-  border:1px dashed #475569;
-  padding:12px;
-  border-radius:12px;
-  color:#cbd5e1;
+  padding:10px 12px;
+  border-radius:10px;
+  margin:10px 0;
+  background:#f9fafb;
+  border:1px dashed var(--border);
+  color:var(--muted);
 }
 
 .badge{
   display:inline-block;
-  background:#334155;
-  border:1px solid #475569;
-  padding:5px 10px;
+  padding:5px 9px;
   border-radius:999px;
+  background:#e5effa;
+  border:1px solid #cbd5f5;
+  color:#111827;
   font-weight:600;
-  color:#e2e8f0;
   font-size:12px;
 }
 
@@ -295,10 +322,16 @@ a:hover{ text-decoration:underline; }
 
 .hidden{ display:none !important; }
 
+.center{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:60px 16px;
+}
 
-/* =========================================================
-   Forms
-   ========================================================= */
+.signin-card{ max-width:420px; }
+
+/* ========== Forms ========== */
 
 label{
   display:block;
@@ -306,198 +339,334 @@ label{
   color:var(--muted);
   font-size:13px;
 }
-
 input[type="text"],
-input[type="number"],
-input[type="email"],
 input[type="url"],
+input[type="email"],
+input[type="number"],
 input[type="date"],
 input[type="time"],
-select,
-textarea{
+textarea,
+select{
   width:100%;
-  background:#151b28;
-  border:1px solid #334155;
-  border-radius:10px;
-  padding:10px 11px;
   font-size:15px;
-  color:#e2e8f0;
+  color:var(--ink);
+  padding:10px 11px;
+  border:1px solid var(--border);
+  border-radius:10px;
   margin-top:5px;
+  background:#ffffff;
 }
-
 textarea{ min-height:110px; }
 
 .form-grid{
   display:grid;
-  gap:12px;
-  grid-template-columns:repeat(2, 1fr);
+  gap:10px;
+  grid-template-columns: repeat(2, minmax(0,1fr));
 }
+.span-2{ grid-column: span 2; }
 
-.span-2{
-  grid-column:span 2;
-}
-
-
-/* =========================================================
-   Tables
-   ========================================================= */
+/* ========== Table ========== */
 
 .table-wrap{ overflow:auto; }
 
 .table{
   width:100%;
   border-collapse:collapse;
-  color:var(--ink);
+  font-size:14px;
 }
-
 .table th,
 .table td{
   border:1px solid var(--border);
   padding:8px;
+  text-align:left;
 }
-
 .table th{
-  background:#1e293b;
-  color:#cbd5e1;
+  background:#f8fafc;
   font-weight:600;
 }
 
-
-/* =========================================================
-   Modal
-   ========================================================= */
+/* ========== Modal ========== */
 
 .modal-overlay{
   position:fixed;
   inset:0;
-  background:rgba(0,0,0,.55);
+  background:rgba(15,23,42,.55);
   display:flex;
   align-items:center;
   justify-content:center;
   z-index:100;
 }
-
 .modal{
   width:min(860px,94vw);
   max-height:86vh;
   overflow:auto;
-  background:#1c2533;
+  background:#ffffff;
   border:1px solid var(--border);
   border-radius:14px;
+  box-shadow:0 18px 48px rgba(15,23,42,.5);
   padding:14px;
-  box-shadow:0 18px 48px rgba(0,0,0,.5);
 }
-
 .modal-head{
   display:flex;
   align-items:center;
   justify-content:space-between;
   margin-bottom:10px;
 }
+.modal-list{ display:grid; gap:10px; }
 
+.modal-row{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:12px;
+  align-items:center;
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px;
+}
+.poster-small{
+  width:56px;
+  height:84px;
+  object-fit:cover;
+  border-radius:10px;
+  border:1px solid var(--border);
+}
 
-/* =========================================================
-   Calendar
-   ========================================================= */
+/* ========== Footer (desktop only; hidden on mobile) ========== */
+
+footer{
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  background:#020617;
+  border-top:1px solid #020617;
+  padding:8px 12px;
+  font-size:13px;
+  color:#9ca3af;
+  text-align:center;
+}
+
+/* ========== Detail views ========== */
+
+.detail-card .item.item--split{
+  grid-template-columns:minmax(260px, 360px) 1fr;
+  align-items:flex-start;
+  gap:20px;
+}
+.detail-card .item-left{
+  gap:16px;
+  align-items:flex-start;
+}
+.detail-card .kv{
+  grid-template-columns:120px 1fr;
+  row-gap:6px;
+}
+.detail-card .item-right{ min-width:0; }
+.detail-card .form-grid{
+  grid-template-columns:repeat(2, minmax(260px, 1fr));
+  column-gap:14px;
+  row-gap:12px;
+}
+.detail-card .form-grid .span-2{ grid-column: span 2; }
+.detail-card textarea{ line-height:1.35; }
+.detail-card .actions{ justify-content:flex-start; }
+
+/* ========== Calendar ========== */
 
 .cal-head{
   display:flex;
   align-items:center;
   justify-content:space-between;
+  gap:10px;
   margin-bottom:10px;
 }
-
 .cal-title{
   font-weight:700;
-  color:#ffffff;
+  letter-spacing:.02em;
 }
-
 .cal-grid{
   display:grid;
   grid-template-columns:repeat(7, 1fr);
-  gap:8px;
+  gap:6px;
 }
-
 .cal-wd{
-  text-align:center;
-  font-weight:600;
-  color:var(--muted);
-}
-
-.cal-cell{
-  min-height:90px;
-  border:1px solid var(--border);
-  background:#151b28;
-  border-radius:12px;
-  padding:8px;
-}
-
-.cal-pill{
-  background:#1e293b;
-  border:1px solid #475569;
-  color:#e2e8f0;
   font-size:12px;
-  padding:6px 8px;
+  color:var(--muted);
+  font-weight:700;
+  text-align:center;
+  padding:4px 0;
+}
+.cal-cell{
+  min-height:84px;
+  border:1px solid var(--border);
   border-radius:10px;
-  margin:4px 0;
+  padding:8px;
+  background:#ffffff;
+}
+.cal-cell.empty{ background:#f9fafb; }
+.cal-day{
+  font-weight:700;
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:6px;
 }
 
+/* Event pills */
+.cal-pill{
+  font-size:12px;
+  font-weight:600;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:6px 8px;
+  margin:3px 0;
+  display:block;
+  white-space:normal;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  text-align:left;
+  background:#ffffff;
+  cursor:pointer;
+}
 
-/* =========================================================
-   Mobile Tab Bar
-   ========================================================= */
+/* auto colour rotation */
+.cal-pill.c0{ background:#e5effa; border-color:#cbd5f5; }
+.cal-pill.c1{ background:#ecfdf5; border-color:#bbf7d0; }
+.cal-pill.c2{ background:#fef3c7; border-color:#fde68a; }
+.cal-pill.c3{ background:#fee2e2; border-color:#fecaca; }
+
+/* ========== Mobile bottom tab bar ========== */
 
 .mobile-tabbar{
   position:fixed;
   bottom:0;
   left:0;
   right:0;
-  background:#151b28;
-  border-top:1px solid var(--border);
-  display:none;
-  grid-template-columns:repeat(5, 1fr);
   z-index:60;
+  background:#020617;
+  border-top:1px solid #020617;
+  display:none;                   /* JS removes .hidden to show */
+  grid-template-columns:repeat(5, 1fr);
 }
-
 .mobile-tabbar button{
   appearance:none;
-  background:none;
+  background:transparent;
   border:none;
   padding:8px 4px;
-  color:#94a3b8;
   font-size:11px;
+  color:#9ca3af;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
 }
-
+.mobile-tabbar .ico{
+  font-size:18px;
+  line-height:1;
+}
 .mobile-tabbar button.active{
-  color:#ffffff;
+  color:#bfdbfe;
 }
 
+/* ========== “Add to home screen” tip ========== */
+/* Give the tip paragraph class="install-tip" in HTML */
+.install-tip{
+  display:none;
+}
+@media (max-width:760px){
+  .install-tip{
+    display:block;
+    font-size:13px;
+    color:var(--muted);
+    padding:10px 16px 80px;
+  }
+}
 
-/* =========================================================
-   Responsive
-   ========================================================= */
+/* ========== Responsive ========== */
 
+/* Tablet-ish */
+@media (max-width:980px){
+  .container{
+    padding:0 14px 90px;
+  }
+  .kv{
+    grid-template-columns:130px 1fr;
+  }
+}
+
+/* Desktop ≥ 761px: show top nav, hide mobile tabbar and mobile Menu button */
 @media (min-width:761px){
   .nav{ display:flex !important; }
   #nav-toggle{ display:none !important; }
   .mobile-tabbar{ display:none !important; }
 }
 
+/* Mobile ≤ 760px */
 @media (max-width:760px){
-  .nav{ display:none !important; }
+  /* Desktop nav hidden by default; JS toggles .nav--open when Menu tapped */
+  .nav{
+    display:none;
+    width:100%;
+    margin:8px 0 0;
+  }
+  .nav.nav--open{
+    display:flex;
+    flex-wrap:wrap;
+  }
+
+  /* Show bottom tabbar when JS removes .hidden */
+  .mobile-tabbar:not(.hidden){
+    display:grid;
+  }
+
+  /* Footer would clash with tabbar */
   footer{ display:none; }
+
   .container{ padding-bottom:120px; }
 
-  .item{ grid-template-columns:1fr; }
-  .poster{ width:90px; height:135px; }
+  .item{
+    grid-template-columns:1fr;
+    gap:14px;
+  }
+  .item-right{
+    justify-content:flex-start;
+  }
+  .poster{
+    width:90px;
+    height:135px;
+  }
+  .item-title{
+    font-size:18px;
+  }
+  .form-grid{
+    grid-template-columns:1fr;
+  }
+  .span-2{
+    grid-column:auto;
+  }
+  .kv{
+    grid-template-columns:110px 1fr;
+  }
 
-  .form-grid{ grid-template-columns:1fr; }
-  .span-2{ grid-column:auto; }
+  .detail-card .item.item--split{
+    grid-template-columns:1fr;
+  }
+  .detail-card .item-right{
+    margin-top:8px;
+  }
+  .detail-card .form-grid{
+    grid-template-columns:1fr;
+  }
+  .detail-card .form-grid .span-2{
+    grid-column:auto;
+  }
 
+  /* Calendar: horizontally scrollable if cramped */
   .cal-grid{
     grid-template-columns:repeat(7, minmax(110px, 1fr));
     overflow-x:auto;
   }
-
-  .cal-cell{ min-width:110px; }
+  .cal-cell{
+    min-width:110px;
+  }
 }
