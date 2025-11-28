@@ -1153,6 +1153,106 @@ async function loadPending(){
   setupPendingFilters();
 }
 
+async function openEditFilmModal(filmId) {
+  const ref = db.collection('films').doc(filmId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    alert('Film not found');
+    return;
+  }
+  const f = { id: snap.id, ...snap.data() };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-label="Edit film details">
+      <div class="modal-head">
+        <h2>Edit film details</h2>
+        <button class="btn btn-ghost" id="edit-close">Close</button>
+      </div>
+
+      <div class="form-grid">
+        <label>Runtime Minutes
+          <input id="edit-runtime" type="number" value="${f.runtimeMinutes ?? ''}">
+        </label>
+        <label>Language
+          <input id="edit-language" type="text" value="${f.language || ''}">
+        </label>
+        <label>UK Age Rating
+          <input id="edit-ukAge" type="text" value="${f.ukAgeRating || ''}" placeholder="U, PG, 12A, 12, 15, 18, NR">
+        </label>
+        <label>Genre
+          <input id="edit-genre" type="text" value="${f.genre || ''}">
+        </label>
+        <label>Country
+          <input id="edit-country" type="text" value="${f.country || ''}">
+        </label>
+        <label>Disk Available?
+          <select id="edit-hasDisk">
+            <option value="false"${f.hasDisk ? '' : ' selected'}>No</option>
+            <option value="true"${f.hasDisk ? ' selected' : ''}>Yes</option>
+          </select>
+        </label>
+        <label class="span-2">Where to see
+          <input id="edit-availability" type="text" value="${f.availability || ''}" placeholder="Apple TV, Netflix, DVD...">
+        </label>
+        <label class="span-2">Synopsis
+          <textarea id="edit-synopsis" rows="3" placeholder="Short description">${f.synopsis || ''}</textarea>
+        </label>
+
+        <div class="actions span-2">
+          <button class="btn btn-primary" id="edit-save">Save changes</button>
+          <button class="btn btn-danger" id="edit-delete">Delete film</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const $ = sel => overlay.querySelector(sel);
+
+  $('#edit-close').onclick = () => document.body.removeChild(overlay);
+
+  $('#edit-save').onclick = async () => {
+    const runtime = $('#edit-runtime').value.trim();
+    const payload = {
+      runtimeMinutes: runtime ? parseInt(runtime, 10) || null : null,
+      language: $('#edit-language').value.trim(),
+      ukAgeRating: $('#edit-ukAge').value.trim(),
+      genre: $('#edit-genre').value.trim(),
+      country: $('#edit-country').value.trim(),
+      hasDisk: $('#edit-hasDisk').value === 'true',
+      availability: $('#edit-availability').value.trim(),
+      synopsis: $('#edit-synopsis').value.trim()
+    };
+
+    try {
+      await ref.update(payload);
+      document.body.removeChild(overlay);
+      routerFromHash(); // refresh current view
+    } catch (e) {
+      alert(e.message || 'Failed to save changes');
+    }
+  };
+
+  $('#edit-delete').onclick = async () => {
+    if (!confirm('Permanently delete this film and all votes? This cannot be undone.')) return;
+    try {
+      // Delete votes subcollection (if any) so we don’t leave junk
+      const votesSnap = await ref.collection('votes').get();
+      const batch = db.batch();
+      votesSnap.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+
+      await ref.delete();
+      document.body.removeChild(overlay);
+      routerFromHash();
+    } catch (e) {
+      alert(e.message || 'Failed to delete film');
+    }
+  };
+}
+
 
 /* =================== BASIC =================== */
 async function loadBasic(){
