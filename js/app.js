@@ -1079,36 +1079,40 @@ function detailCard(f, actionsHtml=''){
 }
 
 /* =================== Pending Films =================== */
+/* =================== Pending Films =================== */
 async function loadPending(){
   // All films, then filter in-memory
   const snap = await db.collection('films').get();
   let films = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 
   // Filter by status (from dropdown)
-  if(filterState.status){
+  if (filterState.status) {
     films = films.filter(f => f.status === filterState.status);
   }
 
   // Filter by search query
-  if(filterState.q){
-    films = films.filter(x => (x.title || '').toLowerCase().includes(filterState.q));
+  if (filterState.q) {
+    films = films.filter(x =>
+      (x.title || '').toLowerCase().includes(filterState.q)
+    );
   }
 
   // Sort by title
   films.sort((a,b) => (a.title || '').localeCompare(b.title || ''));
 
   els.pendingList.innerHTML = '';
-  if(!films.length){
+  if (!films.length) {
     els.pendingList.innerHTML = '<div class="notice">No films match the current filters.</div>';
     return;
   }
 
-  films.forEach(f=>{
+  films.forEach(f => {
     const statusLabel = humanStatus(f.status);
 
-    // Only allow pipeline actions from here for true “pending/intake”
     let actions = '';
-    if(f.status === 'intake'){
+
+    // Only allow pipeline actions from here for true “pending/intake”
+    if (f.status === 'intake') {
       actions += `
         <button class="btn btn-primary" data-next="${f.id}">Basic Criteria</button>
         <button class="btn btn-danger" data-discard="${f.id}">Discard</button>
@@ -1117,41 +1121,60 @@ async function loadPending(){
     }
 
     // Status badge always shown
-    if(statusLabel){
+    if (statusLabel) {
       actions += `<span class="badge">${statusLabel}</span>`;
+    }
+
+    // ----- ADMIN Edit + Delete -----
+    if (isAdmin()) {
+      actions += `
+        <button class="btn btn-ghost" data-act="edit-basic" data-id="${f.id}">Edit</button>
+        <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+      `;
     }
 
     els.pendingList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
   });
 
-  // Action handlers (only relevant for intake)
-  els.pendingList.querySelectorAll('button[data-next]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.next;
-      const ref = db.collection('films').doc(id);
-      await ref.update({ status:'review_basic' });
+  // ------------------------------
+  // Action handlers (intake only)
+  // ------------------------------
+  els.pendingList.querySelectorAll('button[data-next]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await db.collection('films').doc(btn.dataset.next).update({ status:'review_basic' });
       loadPending();
     });
   });
 
-  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.discard;
-      await db.collection('films').doc(id).update({ status:'discarded' });
+  els.pendingList.querySelectorAll('button[data-discard]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await db.collection('films').doc(btn.dataset.discard).update({ status:'discarded' });
       loadPending();
     });
   });
 
-  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.archive;
-      await db.collection('films').doc(id).update({ status:'archived', archivedFrom:'intake' });
+  els.pendingList.querySelectorAll('button[data-archive]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await db.collection('films').doc(btn.dataset.archive).update({
+        status:'archived',
+        archivedFrom:'intake'
+      });
       loadPending();
+    });
+  });
+
+  // ------------------------------
+  // Admin actions (edit-basic, delete-film)
+  // ------------------------------
+  els.pendingList.querySelectorAll('button[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      adminAction(btn.dataset.act, btn.dataset.id);
     });
   });
 
   setupPendingFilters();
 }
+
 
 async function openEditFilmModal(filmId) {
   const ref = db.collection('films').doc(filmId);
@@ -1357,28 +1380,29 @@ async function loadViewing(){
   els.viewingList.innerHTML = '';
 
   const docs = await fetchByStatus('viewing');
-  if(!docs.length){
+  if (!docs.length){
     els.viewingList.insertAdjacentHTML('beforeend','<div class="notice">Viewing queue is empty.</div>');
     return;
   }
 
   // Locations
   const locSnap = await db.collection('locations').orderBy('name').get();
-  const locs = locSnap.docs.map(d=>({ id:d.id, ...(d.data()) }));
+  const locs = locSnap.docs.map(d => ({ id:d.id, ...(d.data()) }));
 
-  docs.forEach(doc=>{
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
     const dateISO = (f.viewingDate && typeof f.viewingDate.toDate === 'function')
       ? f.viewingDate.toDate().toISOString().slice(0,10)
       : '';
+
     let locOptions = '<option value="">Select location…</option>';
-    locs.forEach(l=>{
-      const sel = (f.viewingLocationId===l.id) ? ' selected' : '';
+    locs.forEach(l => {
+      const sel = (f.viewingLocationId === l.id) ? ' selected' : '';
       locOptions += `<option value="${l.id}"${sel}>${l.name}</option>`;
     });
     locOptions += '<option value="__add">+ Add new location…</option>';
 
-    const actions = `
+    let actions = `
       <div class="form-grid">
         <label>Location
           <select data-edit="viewingLocationId" data-id="${f.id}">
@@ -1391,7 +1415,7 @@ async function loadViewing(){
         </label>
 
         <label>Time (optional)
-          <input type="time" data-edit="viewingTime" data-id="${f.id}" value="${f.viewingTime||''}">
+          <input type="time" data-edit="viewingTime" data-id="${f.id}" value="${f.viewingTime || ''}">
         </label>
 
         <div class="actions span-2" style="margin-top:4px">
@@ -1401,18 +1425,29 @@ async function loadViewing(){
         </div>
       </div>
     `;
+
+    // ---- Admin Edit + Delete for Viewing ----
+    if (isAdmin()) {
+      actions += `
+        <div class="actions" style="margin-top:6px">
+          <button class="btn btn-ghost" data-act="edit-basic" data-id="${f.id}">Edit</button>
+          <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+        </div>
+      `;
+    }
+
     els.viewingList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
   // Location dropdown changes (including "Add new")
-  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel=>{
-    sel.addEventListener('change', async ()=>{
+  els.viewingList.querySelectorAll('select[data-edit="viewingLocationId"]').forEach(sel => {
+    sel.addEventListener('change', async () => {
       const id = sel.dataset.id;
       const val = sel.value;
 
-      if(val === '__add'){
+      if (val === '__add') {
         const newLoc = await showAddLocationModal();
-        if(newLoc){
+        if (newLoc) {
           await db.collection('films').doc(id).update({
             viewingLocationId: newLoc.id,
             viewingLocationName: newLoc.name || ''
@@ -1422,7 +1457,7 @@ async function loadViewing(){
         return;
       }
 
-      if(!val){
+      if (!val) {
         await db.collection('films').doc(id).update({
           viewingLocationId: '',
           viewingLocationName: ''
@@ -1442,38 +1477,41 @@ async function loadViewing(){
   });
 
   // Inline date/time edits
-  els.viewingList.querySelectorAll('input[data-edit="viewingDate"]').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
+  els.viewingList.querySelectorAll('input[data-edit="viewingDate"]').forEach(inp => {
+    inp.addEventListener('change', async () => {
       const id = inp.dataset.id;
       const val = inp.value;
-      const ts = val ? firebase.firestore.Timestamp.fromDate(new Date(val+'T00:00:00')) : null;
+      const ts = val ? firebase.firestore.Timestamp.fromDate(new Date(val + 'T00:00:00')) : null;
       await db.collection('films').doc(id).update({ viewingDate: ts });
       await refreshCalendarOnly();
     });
   });
-  els.viewingList.querySelectorAll('input[data-edit="viewingTime"]').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
+
+  els.viewingList.querySelectorAll('input[data-edit="viewingTime"]').forEach(inp => {
+    inp.addEventListener('change', async () => {
       const id = inp.dataset.id;
       await db.collection('films').doc(id).update({ viewingTime: inp.value || '' });
       await refreshCalendarOnly();
     });
   });
 
-  // Buttons
-  els.viewingList.querySelectorAll('button[data-act]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
+  // Buttons (including admin edit/delete)
+  els.viewingList.querySelectorAll('button[data-act]').forEach(btn => {
+    btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
       const act = btn.dataset.act;
 
-      if(act === 'set-datetime'){
+      if (act === 'set-datetime') {
         sessionStorage.setItem('scheduleTarget', id);
         location.hash = 'calendar';
         return;
       }
+
       await adminAction(act, id);
     });
   });
 }
+
 
 
 /* =================== CALENDAR PAGE =================== */
@@ -1747,89 +1785,160 @@ async function checkAutoOutcome(filmId){
 async function loadUk(){
   const docs = await fetchByStatus('uk_check');
   els.ukList.innerHTML = '';
-  if(!docs.length){ els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>'; return; }
-  docs.forEach(doc=>{
+
+  if (!docs.length) {
+    els.ukList.innerHTML = '<div class="notice">Nothing awaiting UK distributor check.</div>';
+    return;
+  }
+
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
-    const actions = `
+
+    let actions = `
       <div class="actions">
         <button class="btn btn-accent" data-act="uk-yes" data-id="${f.id}">Distributor Confirmed ✓</button>
         <button class="btn btn-warn" data-act="uk-no" data-id="${f.id}">No Distributor</button>
       </div>
     `;
+
+    // Admin-only: edit & delete from UK Distributor stage
+    if (isAdmin()) {
+      actions += `
+        <div class="actions" style="margin-top:6px">
+          <button class="btn btn-ghost" data-act="edit-basic" data-id="${f.id}">Edit</button>
+          <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+        </div>
+      `;
+    }
+
     els.ukList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.ukList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+
+  // All buttons (including admin Edit/Delete) route through adminAction
+  els.ukList.querySelectorAll('button[data-id]').forEach(b => {
+    b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
   });
 }
+
 
 /* =================== GREEN LIST =================== */
 async function loadGreen(){
   const docs = await fetchByStatus('greenlist');
   els.greenList.innerHTML = '';
-  if(!docs.length){ els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>'; return; }
-  docs.forEach(doc=>{
+
+  if (!docs.length) {
+    els.greenList.innerHTML = '<div class="notice">Green List is empty.</div>';
+    return;
+  }
+
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function') ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
+    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
+      ? f.greenAt.toDate().toISOString().slice(0,10)
+      : '—';
+
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
         <button class="btn btn-primary" data-act="to-nextprog" data-id="${f.id}">→ Next Programme</button>
         <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-        ${isAdmin() ? `<button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>` : ''}
-      </div>`;
+        ${
+          isAdmin()
+            ? `
+              <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
+              <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+            `
+            : ''
+        }
+      </div>
+    `;
 
     els.greenList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.greenList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click', async ()=>{
+
+  els.greenList.querySelectorAll('button[data-id]').forEach(b => {
+    b.addEventListener('click', async () => {
       const act = b.dataset.act;
       const id  = b.dataset.id;
+
       if (act === 'edit-film') {
         if (!isAdmin()) return;
         await openEditFilmModal(id);
         return;
       }
+
+      // delete-film, to-nextprog, to-archive all go through adminAction
       await adminAction(act, id);
     });
   });
-
 }
+
 
 /* =================== NEXT PROGRAMME =================== */
 async function loadNextProgramme(){
   const docs = await fetchByStatus('next_programme');
+
   els.nextProgList.innerHTML = `
     <div class="actions" style="margin-bottom:8px">
       <button class="btn btn-danger" id="btn-archive-all">Archive all</button>
     </div>
   `;
-  const ba = document.getElementById('btn-archive-all');
-  if(ba) ba.addEventListener('click', archiveAllNextProg);
 
-  if(!docs.length){
-    els.nextProgList.insertAdjacentHTML('beforeend', '<div class="notice">No films in Next Programme.</div>');
+  const ba = document.getElementById('btn-archive-all');
+  if (ba) ba.addEventListener('click', archiveAllNextProg);
+
+  if (!docs.length) {
+    els.nextProgList.insertAdjacentHTML(
+      'beforeend',
+      '<div class="notice">No films in Next Programme.</div>'
+    );
     return;
   }
-  docs.forEach(doc=>{
+
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
-    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function') ? f.greenAt.toDate().toISOString().slice(0,10) : '—';
+    const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
+      ? f.greenAt.toDate().toISOString().slice(0,10)
+      : '—';
+
     const actions = `
       <div class="actions">
         <span class="badge">Green since: ${greenAt}</span>
         <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
-      </div>`;
+        ${
+          isAdmin()
+            ? `
+              <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
+              <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+            `
+            : ''
+        }
+      </div>
+    `;
+
     els.nextProgList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
-  els.nextProgList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+
+  els.nextProgList.querySelectorAll('button[data-id]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const act = b.dataset.act;
+      const id  = b.dataset.id;
+
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
+        return;
+      }
+
+      await adminAction(act, id); // includes delete-film and to-archive
+    });
   });
 }
 
 async function archiveAllNextProg(){
   const docs = await fetchByStatus('next_programme');
   const batch = db.batch();
-  docs.forEach(d=>{
+  docs.forEach(d => {
     const ref = db.collection('films').doc(d.id);
     batch.update(ref, { status:'archived', archivedFrom:'next_programme' });
   });
@@ -1837,20 +1946,31 @@ async function archiveAllNextProg(){
   loadNextProgramme();
 }
 
+
 /* =================== DISCARDED =================== */
 async function loadDiscarded(){
   const docs = await fetchByStatus('discarded');
   els.discardedList.innerHTML = '';
-  if(!docs.length){
+
+  if (!docs.length) {
     els.discardedList.innerHTML = '<div class="notice">Discard list is empty.</div>';
     return;
   }
 
-  docs.forEach(doc=>{
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
+
     const actions = `
       <div class="actions">
         <button class="btn btn-ghost" data-act="restore" data-id="${f.id}">Restore to Pending</button>
+        ${
+          isAdmin()
+            ? `
+              <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
+              <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+            `
+            : ''
+        }
       </div>
       <div class="form-grid" style="margin-top:8px">
         <label class="span-2">
@@ -1860,40 +1980,87 @@ async function loadDiscarded(){
         <button class="btn span-2" data-save-discard-reason="${f.id}">Save comment</button>
       </div>
     `;
+
     els.discardedList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
-  // Restore button
-  els.discardedList.querySelectorAll('button[data-act="restore"]').forEach(b=>{
-    b.addEventListener('click', ()=>adminAction('restore', b.dataset.id));
+  // Restore / edit / delete buttons
+  els.discardedList.querySelectorAll('button[data-act]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const act = b.dataset.act;
+      const id  = b.dataset.id;
+
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
+        return;
+      }
+
+      // restore + delete-film both go via adminAction
+      await adminAction(act, id);
+    });
   });
 
   // Save discard reason
-  els.discardedList.querySelectorAll('button[data-save-discard-reason]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const id = btn.dataset.saveDiscardReason;
-      const textarea = els.discardedList.querySelector(`textarea[data-discard-reason="${id}"]`);
-      const reason = (textarea && textarea.value ? textarea.value.trim() : '');
-      await db.collection('films').doc(id).update({ discardedReason: reason });
-      // optional: tiny visual feedback
-      btn.textContent = 'Saved';
-      setTimeout(()=>{ btn.textContent = 'Save comment'; }, 1500);
+  els.discardedList
+    .querySelectorAll('button[data-save-discard-reason]')
+    .forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.saveDiscardReason;
+        const textarea = els.discardedList.querySelector(
+          `textarea[data-discard-reason="${id}"]`
+        );
+        const reason = (textarea && textarea.value ? textarea.value.trim() : '');
+        await db.collection('films').doc(id).update({ discardedReason: reason });
+
+        btn.textContent = 'Saved';
+        setTimeout(() => { btn.textContent = 'Save comment'; }, 1500);
+      });
     });
-  });
 }
 
 /* =================== ARCHIVE =================== */
 async function loadArchive(){
   const docs = await fetchByStatus('archived');
   els.archiveList.innerHTML = '';
-  if(!docs.length){ els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>'; return; }
-  docs.forEach(doc=>{
+
+  if (!docs.length) {
+    els.archiveList.innerHTML = '<div class="notice">No archived films yet.</div>';
+    return;
+  }
+
+  docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
     const origin = f.archivedFrom || '';
-    const right = origin ? `<span class="badge">${origin}</span>` : '';
-    els.archiveList.insertAdjacentHTML('beforeend', pendingCard(f, right));
+
+    let actions = origin ? `<span class="badge">${origin}</span>` : '';
+
+    if (isAdmin()) {
+      actions += `
+        <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
+        <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete</button>
+      `;
+    }
+
+    els.archiveList.insertAdjacentHTML('beforeend', pendingCard(f, actions));
+  });
+
+  els.archiveList.querySelectorAll('button[data-id]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const act = b.dataset.act;
+      const id  = b.dataset.id;
+
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
+        return;
+      }
+
+      await adminAction(act, id); // handles delete-film
+    });
   });
 }
+
 
 /* =================== Addresses (Admin) =================== */
 async function loadAddressesAdmin(){
