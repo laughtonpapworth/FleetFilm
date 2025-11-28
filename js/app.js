@@ -1255,6 +1255,7 @@ async function openEditFilmModal(filmId) {
 
 
 /* =================== BASIC =================== */
+/* =================== BASIC =================== */
 async function loadBasic(){
   const docs = await fetchByStatus('review_basic');
   els.basicList.innerHTML = '';
@@ -1314,9 +1315,6 @@ async function loadBasic(){
           </button>
 
           ${isAdmin() ? `
-          <button class="btn btn-ghost" data-act="edit-basic" data-id="${f.id}">
-            Edit
-          </button>
           <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">
             Delete
           </button>
@@ -1346,22 +1344,10 @@ async function loadBasic(){
     });
   });
 
-  // Action buttons (validate, discard, edit-basic, delete-film)
+  // Action buttons (validate, discard, delete-film)
   els.basicList.querySelectorAll('button[data-id]').forEach(b => {
     b.addEventListener('click', () => adminAction(b.dataset.act, b.dataset.id));
   });
-
-  // If we came here from "Edit" on another page, scroll to and highlight that film
-  const targetId = sessionStorage.getItem('editTarget');
-  if (targetId) {
-    const card = els.basicList.querySelector(`[data-film-card="${targetId}"]`);
-    if (card) {
-      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      card.classList.add('card--highlight');
-      setTimeout(() => card.classList.remove('card--highlight'), 1800);
-    }
-    sessionStorage.removeItem('editTarget');
-  }
 }
 
 
