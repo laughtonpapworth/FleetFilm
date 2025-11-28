@@ -76,7 +76,13 @@ const els = {
   emailCreateBtn: document.getElementById('btn-email-create'),
 };
 
+// Global auth / role state
 const state = { user: null, role: 'member' };
+
+// Helper: is current user an admin?
+function isAdmin() {
+  return state.role === 'admin';
+}
 
 // Single source of truth for page ids & labels (in pipeline order)
 const PAGE_DEFS = [
@@ -94,7 +100,6 @@ const PAGE_DEFS = [
   ['addresses', 'Addresses'],
 ];
 
-
 /* ========= Required fields for Basic ========= */
 const REQUIRED_BASIC_FIELDS = [
   'runtimeMinutes',  // number; must be <= 150
@@ -103,6 +108,7 @@ const REQUIRED_BASIC_FIELDS = [
   'genre',           // string
   'country'          // string
 ];
+
 
 /* =================== Calendar (Monday-first) =================== */
 let calOffset = 0; // months from "now" (0=current, -1=prev, +1=next)
