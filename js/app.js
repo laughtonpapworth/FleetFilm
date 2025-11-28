@@ -78,6 +78,23 @@ const els = {
 
 const state = { user: null, role: 'member' };
 
+// Single source of truth for page ids & labels (in pipeline order)
+const PAGE_DEFS = [
+  ['submit',    'Submit'],
+  ['pending',   'Film List'],
+  ['basic',     'Basic Criteria'],
+  ['viewing',   'Viewing'],
+  ['vote',      'Voting'],
+  ['uk',        'UK Distributor'],
+  ['green',     'Green List'],
+  ['nextprog',  'Next Programme'],
+  ['discarded', 'Discarded'],
+  ['archive',   'Archive'],
+  ['calendar',  'Calendar'],
+  ['addresses', 'Addresses'],
+];
+
+
 /* ========= Required fields for Basic ========= */
 const REQUIRED_BASIC_FIELDS = [
   'runtimeMinutes',  // number; must be <= 150
@@ -396,51 +413,41 @@ function attachHandlers(){
       location.hash = btn.dataset.view;
     });
 
-    const moreBtn = document.getElementById('tab-more');
-    if (moreBtn) {
-      moreBtn.addEventListener('click', () => {
-        // Build the "More" list = everything except the 4 quick ones
-        const rest = [
-          ['pending',   'Pending'],
-          ['basic',     'Basic'],
-          ['uk',        'UK Check'],
-          ['green',     'Green'],
-          ['nextprog',  'Next Programme'],
-          ['discarded', 'Discarded'],
-          ['archive',   'Archive'],
-          ['addresses', 'Addresses'],
-        ];
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        overlay.innerHTML = `
-          <div class="modal" role="dialog" aria-label="More pages">
-            <div class="modal-head">
-              <h2>More pages</h2>
-              <button class="btn btn-ghost" id="more-close">Close</button>
-            </div>
-            <div class="modal-list" id="more-list"></div>
-          </div>`;
-        document.body.appendChild(overlay);
+  const moreBtn = document.getElementById('tab-more');
+if (moreBtn) {
+  moreBtn.addEventListener('click', () => {
+    // Show ALL pages in pipeline order, including the quick ones
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-label="More pages">
+        <div class="modal-head">
+          <h2>Pages</h2>
+          <button class="btn btn-ghost" id="more-close">Close</button>
+        </div>
+        <div class="modal-list" id="more-list"></div>
+      </div>`;
+    document.body.appendChild(overlay);
 
-        const list = overlay.querySelector('#more-list');
-        rest.forEach(([view, label])=>{
-          const b = document.createElement('button');
-          b.className = 'btn';
-          b.textContent = label;
-          b.onclick = () => {
-            location.hash = view;           // navigate
-            document.body.removeChild(overlay); // auto-hide
-          };
-          list.appendChild(b);
-        });
+    const list = overlay.querySelector('#more-list');
 
-        overlay.querySelector('#more-close').onclick = () => {
-          document.body.removeChild(overlay);
-        };
-      });
-    }
-  }
+    PAGE_DEFS.forEach(([view, label]) => {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = label;
+      b.onclick = () => {
+        location.hash = view;
+        document.body.removeChild(overlay);
+      };
+      list.appendChild(b);
+    });
+
+    overlay.querySelector('#more-close').onclick = () => {
+      document.body.removeChild(overlay);
+    };
+  });
 }
+
 
 /* =================== Filters (Pending) =================== */
 const filterState = { q:'', status:'' };
@@ -1878,3 +1885,4 @@ async function boot(){
 document.addEventListener('DOMContentLoaded', () => {
   boot().catch(err => console.error('[boot] error:', err));
 });
+
