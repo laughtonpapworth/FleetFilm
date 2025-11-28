@@ -1725,12 +1725,24 @@ async function loadGreen(){
         <span class="badge">Green since: ${greenAt}</span>
         <button class="btn btn-primary" data-act="to-nextprog" data-id="${f.id}">→ Next Programme</button>
         <button class="btn" data-act="to-archive" data-id="${f.id}">Archive</button>
+        ${isAdmin() ? `<button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>` : ''}
       </div>`;
+
     els.greenList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
   els.greenList.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click',()=>adminAction(b.dataset.act,b.dataset.id));
+    b.addEventListener('click', async ()=>{
+      const act = b.dataset.act;
+      const id  = b.dataset.id;
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
+        return;
+      }
+      await adminAction(act, id);
+    });
   });
+
 }
 
 /* =================== NEXT PROGRAMME =================== */
