@@ -1637,8 +1637,10 @@ const actions = `
   <div style="margin-top:6px">${listVotes}</div>
   <div class="actions" style="margin-top:8px">
     <button class="btn" data-act="to-discard" data-id="${f.id}">Discard</button>
+    ${isAdmin() ? `<button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>` : ''}
   </div>
 `;
+
 
     els.voteList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   }
@@ -1649,8 +1651,19 @@ const actions = `
 
   // Wire discard button in Voting
   els.voteList.querySelectorAll('button[data-act]').forEach(btn => {
-    btn.addEventListener('click', () => adminAction(btn.dataset.act, btn.dataset.id));
+    btn.addEventListener('click', async () => {
+      const act = btn.dataset.act;
+      const id  = btn.dataset.id;
+
+      if (act === 'edit-film') {
+        if (!isAdmin()) return;
+        await openEditFilmModal(id);
+        return;
+      }
+      await adminAction(act, id);
+    });
   });
+
 }
 
 async function castVote(filmId, value){
