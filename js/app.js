@@ -330,16 +330,16 @@ async function ensureUserDoc(u){
 
 function attachHandlers(){
   // Header Menu (mobile)
-  if(els.navToggle){
-    els.navToggle.addEventListener('click', ()=>{
-      if(els.nav?.classList.contains('nav--open')) setNavOpen(false);
+  if (els.navToggle) {
+    els.navToggle.addEventListener('click', () => {
+      if (els.nav?.classList.contains('nav--open')) setNavOpen(false);
       else setNavOpen(true);
     });
   }
 
   // Top nav routing
   Object.values(els.navButtons).forEach(btn => {
-    if(!btn) return;
+    if (!btn) return;
     btn.addEventListener('click', () => {
       setNavOpen(false);
       location.hash = btn.dataset.view;
@@ -347,12 +347,12 @@ function attachHandlers(){
   });
 
   // Sign out
-  if(els.signOut){
+  if (els.signOut) {
     els.signOut.addEventListener('click', () => auth.signOut());
   }
 
   // Submit button
-  if(els.submitBtn){
+  if (els.submitBtn) {
     els.submitBtn.addEventListener('click', submitFilm);
   }
 
@@ -361,7 +361,6 @@ function attachHandlers(){
     els.googleBtn.addEventListener('click', async () => {
       const provider = new firebase.auth.GoogleAuthProvider();
       try {
-        // Try popup first (works on desktop and most mobile when triggered by a user click)
         await auth.signInWithPopup(provider);
       } catch (err) {
         console.warn('Popup failed, falling back to redirect:', err && err.message);
@@ -372,81 +371,83 @@ function attachHandlers(){
 
   // Optional: surface redirect errors after returning from Google
   auth.getRedirectResult().catch(err => {
-    // This call is important on mobile: it completes the redirect flow.
     console.warn('Redirect sign-in error:', err && err.message);
   });
 
   // Email auth
-  if(els.emailSignInBtn){
+  if (els.emailSignInBtn) {
     els.emailSignInBtn.addEventListener('click', async () => {
       try {
         await auth.signInWithEmailAndPassword(els.email.value, els.password.value);
-      } catch(e) { alert(e.message); }
-    });
-  }
-  if(els.emailCreateBtn){
-    els.emailCreateBtn.addEventListener('click', async () => {
-      try {
-        await auth.createUserWithEmailAndPassword(els.email.value, els.password.value);
-      } catch(e) { alert(e.message); }
+      } catch (e) { alert(e.message); }
     });
   }
 
-     // Export Next Programme CSV (button appears on multiple views)
-  document.querySelectorAll('.btn-export-programme').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
+  if (els.emailCreateBtn) {
+    els.emailCreateBtn.addEventListener('click', async () => {
+      try {
+        await auth.createUserWithEmailAndPassword(els.email.value, els.password.value);
+      } catch (e) { alert(e.message); }
+    });
+  }
+
+  // Export Next Programme CSV (button appears on multiple views)
+  document.querySelectorAll('.btn-export-programme').forEach(btn => {
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       exportNextProgrammeCsv();
     });
   });
 
-
   // Hash router
   window.addEventListener('hashchange', routerFromHash);
 
-  // Mobile bottom tabbar
+  // Mobile bottom tabbar (main icons)
   const mbar = document.getElementById('mobile-tabbar');
   if (mbar) {
-    mbar.addEventListener('click', (e)=>{
+    mbar.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-view]');
-      if(!btn) return;
+      if (!btn) return;
       location.hash = btn.dataset.view;
     });
+  }
 
+  // Mobile "More" button – show ALL pages in PAGE_DEFS order
   const moreBtn = document.getElementById('tab-more');
-if (moreBtn) {
-  moreBtn.addEventListener('click', () => {
-    // Show ALL pages in pipeline order, including the quick ones
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal" role="dialog" aria-label="More pages">
-        <div class="modal-head">
-          <h2>Pages</h2>
-          <button class="btn btn-ghost" id="more-close">Close</button>
-        </div>
-        <div class="modal-list" id="more-list"></div>
-      </div>`;
-    document.body.appendChild(overlay);
+  if (moreBtn) {
+    moreBtn.addEventListener('click', () => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" role="dialog" aria-label="More pages">
+          <div class="modal-head">
+            <h2>Pages</h2>
+            <button class="btn btn-ghost" id="more-close">Close</button>
+          </div>
+          <div class="modal-list" id="more-list"></div>
+        </div>`;
+      document.body.appendChild(overlay);
 
-    const list = overlay.querySelector('#more-list');
+      const list = overlay.querySelector('#more-list');
 
-    PAGE_DEFS.forEach(([view, label]) => {
-      const b = document.createElement('button');
-      b.className = 'btn';
-      b.textContent = label;
-      b.onclick = () => {
-        location.hash = view;
+      PAGE_DEFS.forEach(([view, label]) => {
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.textContent = label;
+        b.onclick = () => {
+          location.hash = view;
+          document.body.removeChild(overlay);
+        };
+        list.appendChild(b);
+      });
+
+      overlay.querySelector('#more-close').onclick = () => {
         document.body.removeChild(overlay);
       };
-      list.appendChild(b);
     });
-
-    overlay.querySelector('#more-close').onclick = () => {
-      document.body.removeChild(overlay);
-    };
-  });
+  }
 }
+
 
 
 /* =================== Filters (Pending) =================== */
