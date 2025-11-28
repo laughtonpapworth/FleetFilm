@@ -42,18 +42,19 @@ a:hover{ text-decoration:underline; }
 
 /* ===== Header / Brand / Nav ===== */
 
+/* ===== Header / Brand / Nav ===== */
+
 .header{
   position:sticky;
   top:0;
   z-index:40;
   background:#ffffff;
   border-bottom:1px solid var(--border);
-  padding:10px 18px;
+  padding:10px 24px;
   display:flex;
-  gap:14px;
   align-items:center;
-  justify-content:space-between;
-  flex-wrap:wrap;
+  gap:20px;
+  justify-content:flex-start;      /* was space-between – this is what looked weird */
 }
 
 /* Brand block: logo + text */
@@ -64,40 +65,22 @@ a:hover{ text-decoration:underline; }
 }
 
 .brand-logo{
-  height:40px;          /* FIX: keep logo at sensible size */
+  height:40px;
   width:auto;
 }
 
-.brand-text{
-  display:flex;
-  flex-direction:column;
-  gap:2px;
-}
-
-.brand-title{
-  font-size:20px;
-  font-weight:700;
-  letter-spacing:.04em;
-  text-transform:uppercase;
-}
-
-.brand-subtitle{
-  font-size:12px;
-  color:var(--muted);
-  letter-spacing:.08em;
-  text-transform:uppercase;
-}
-
-/* Collapsible nav (visibility controlled by .hidden and .nav--open) */
+/* Collapsible nav */
 .nav{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:8px;
-  padding:4px 0;
+  padding:0;
+  margin-left:16px;               /* space between logo and pills */
+  flex:1 1 auto;                  /* let it fill horizontally but stay next to logo */
 }
 
-/* Header nav buttons – simpler, less “app-ish” */
+/* Header nav buttons – same styling, left-aligned now */
 .nav button{
   appearance:none;
   border:1px solid var(--border);
@@ -109,7 +92,8 @@ a:hover{ text-decoration:underline; }
   border-radius:999px;
   cursor:pointer;
   white-space:nowrap;
-  transition:background .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
+  transition:background .12s ease, border-color .12s ease,
+             color .12s ease, box-shadow .12s ease;
 }
 
 .nav button:hover{
@@ -124,11 +108,12 @@ a:hover{ text-decoration:underline; }
   box-shadow:0 2px 8px rgba(22,53,91,.35);
 }
 
-/* Sign-out as a subtle text link inside nav */
+/* Sign-out stays at the far right of the pill row */
 .nav-signout{
   border:none;
   background:none;
   padding:0 4px;
+  margin-left:auto;               /* pushes Sign out to the end of the nav row */
   font-size:13px;
   font-weight:500;
   color:var(--muted);
@@ -138,10 +123,11 @@ a:hover{ text-decoration:underline; }
   text-decoration:underline;
 }
 
-/* Mobile header “Menu” button – hidden on desktop via media query */
+/* Mobile header “Menu” button – still only visible on mobile via media query */
 .header-menu{
   margin-left:auto;
 }
+
 
 /* ===== Layout ===== */
 
