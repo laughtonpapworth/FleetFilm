@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // user profile (role)
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // films
+    match /films/{filmId} {
+      allow read: if request.auth != null;
+
+      // Create: any signed-in user can submit a film
+      allow create: if request.auth != null;
+
+      // Update: only committee/admin can change status or criteria; creator can edit basic details while still 'submitted'
+      allow update: if request.auth != null && (
+        // committee/admin:
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['committee','admin'] ||
+        // creator can edit only certain fields while status is 'submitted'
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title','year','distributor','link','synopsis']) &&
+         resource.data.status == 'submitted' &&
+         resource.data.createdBy == request.auth.uid)
+      );
+
+      // Delete: admin only
+      allow delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+
+      // votes subcollection
+      match /votes/{userVote} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userVote;
+      }
+    }
+  }
+}
