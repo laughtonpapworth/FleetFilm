@@ -1548,12 +1548,15 @@ async function openEditFilmModal(filmId) {
     } catch (e) {
       alert(e.message || 'Failed to save changes');
     }
-  
+  };
 
   $('#edit-history').onclick = async () => {
-    await showAuditModal(filmId);
+    try {
+      await showAuditModal(filmId);
+    } catch (e) {
+      alert(e.message || 'Failed to load history');
+    }
   };
-};
 
   $('#edit-delete').onclick = async () => {
     if (!confirm('Permanently delete this film and all votes? This cannot be undone.')) return;
@@ -2829,4 +2832,5 @@ async function boot(){
 document.addEventListener('DOMContentLoaded', () => {
   boot().catch(err => console.error('[boot] error:', err));
 });
+
 
