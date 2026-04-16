@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0a0a0f"/>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="icon" href="img/FFIcon.png" sizes="32x32" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script defer src="js/firebase-config.js"></script>
+  <script defer src="js/app.js"></script>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <img src="img/FFLogo.png" alt="Fleet Film logo" class="brand-logo">
+  </div>
+  <nav class="nav hidden" id="nav" aria-label="Main navigation">
+    <button class="btn-pill" data-view="films">Film List</button>
+    <button class="btn-pill" data-view="green">Green List</button>
+    <button class="btn-pill" data-view="nextprog">Next Programme</button>
+    <button class="btn-pill" data-view="discarded">Discarded</button>
+    <button class="btn-pill" data-view="archive">Archive</button>
+    <button class="btn-pill" data-view="calendar">Calendar</button>
+    <button class="btn-pill hidden" id="nav-addresses" data-view="addresses">Addresses</button>
+    <span class="nav-spacer"></span>
+    <button class="btn-link nav-signout" id="btn-signout">Sign out</button>
+  </nav>
+</header>
+
+<main class="container">
+
+  <!-- Signed out -->
+  <div id="signed-out" class="center">
+    <div class="signin-card">
+      <h1>Fleet Film</h1>
+      <p>Sign in to access the film club dashboard. Works on phones and installs like an app.</p>
+      <div class="actions" style="flex-direction:column;gap:10px;">
+        <button id="btn-google" class="btn btn-primary big" style="width:100%;justify-content:center;">Sign in with Google</button>
+      </div>
+      <div class="hr"></div>
+      <label>Email<input id="email" type="email" placeholder="you@example.com" autocomplete="username"/></label>
+      <label>Password<input id="password" type="password" placeholder="Password" autocomplete="current-password"/></label>
+      <div class="actions" style="margin-top:14px;">
+        <button id="btn-email-signin" class="btn btn-ghost big" style="flex:1;">Sign in</button>
+        <button id="btn-email-create" class="btn btn-ghost big" style="flex:1;">Create account</button>
+      </div>
+      <div class="notice" style="margin-top:16px;">Need help? Ask an admin to invite you.</div>
+    </div>
+  </div>
+
+  <!-- Signed in -->
+  <div id="signed-in" class="hidden">
+
+    <!-- Film List (landing page) -->
+    <section id="view-films" class="card hidden">
+      <h1>Film List</h1>
+      <div class="toolbar">
+        <button class="btn btn-primary" id="btn-add-film">+ Add Film</button>
+        <input id="filter-q" type="text" placeholder="Search title, genre, language, country, director…">
+        <select id="filter-status">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="greenlist">Green List</option>
+          <option value="next_programme">Next Programme</option>
+          <option value="discarded">Discarded</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select id="filter-sort">
+          <option value="created-desc" selected>Date added (newest)</option>
+          <option value="created-asc">Date added (oldest)</option>
+          <option value="title-asc">Title A–Z</option>
+          <option value="title-desc">Title Z–A</option>
+          <option value="year-desc">Release year (newest)</option>
+          <option value="year-asc">Release year (oldest)</option>
+        </select>
+        <button id="filter-clear" class="btn btn-ghost">Clear</button>
+        <button id="btn-bulk-refetch" class="btn btn-ghost hidden" title="Admin: re-fetch TMDB data for films missing posters">⟳ Bulk Re-fetch</button>
+      </div>
+      <div class="list" id="films-list"></div>
+    </section>
+
+    <!-- Green List -->
+    <section id="view-green" class="card hidden">
+      <h1>Green List</h1>
+      <div class="toolbar">
+        <button class="btn btn-ghost" data-export="green">⬇ Export CSV</button>
+      </div>
+      <div class="list" id="green-list"></div>
+    </section>
+
+    <!-- Next Programme -->
+    <section id="view-nextprog" class="card hidden">
+      <h1>Next Programme</h1>
+      <div class="toolbar">
+        <button class="btn btn-ghost" data-export="nextprog">⬇ Export CSV</button>
+      </div>
+      <div id="nextprog-controls"></div>
+      <div class="list" id="nextprog-list"></div>
+    </section>
+
+    <!-- Discarded -->
+    <section id="view-discarded" class="card hidden">
+      <h1>Discarded</h1>
+      <div class="list" id="discarded-list"></div>
+    </section>
+
+    <!-- Archive -->
+    <section id="view-archive" class="card hidden">
+      <h1>Archive</h1>
+      <div class="toolbar">
+        <button class="btn btn-ghost" data-export="archive">⬇ Export CSV</button>
+      </div>
+      <div class="list" id="archive-list"></div>
+    </section>
+
+    <!-- Calendar -->
+    <section id="view-calendar" class="card hidden">
+      <h1>Calendar</h1>
+      <div id="calendar-container"></div>
+    </section>
+
+    <!-- Addresses (admin only) -->
+    <section id="view-addresses" class="card hidden">
+      <h1>Saved Addresses</h1>
+      <div id="addresses-admin-msg" class="notice hidden"></div>
+      <div class="actions" style="margin-bottom:12px">
+        <button id="addr-add" class="btn btn-primary">+ Add address</button>
+        <button id="addr-refresh" class="btn btn-ghost">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="addresses-table">
+          <thead><tr>
+            <th style="width:22%">Name</th>
+            <th style="width:30%">Address</th>
+            <th style="width:18%">City</th>
+            <th style="width:14%">Postcode</th>
+            <th style="width:16%">Actions</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(console.error));
+  }
+</script>
+
+<!-- Mobile bottom tab bar -->
+<nav id="mobile-tabbar" class="mobile-tabbar hidden">
+  <button data-view="films"><span class="ico">🎬</span><span>Films</span></button>
+  <button data-view="green"><span class="ico">✅</span><span>Green</span></button>
+  <button data-view="nextprog"><span class="ico">📽️</span><span>Next Prog</span></button>
+  <button data-view="calendar"><span class="ico">🗓️</span><span>Calendar</span></button>
+  <button id="tab-more"><span class="ico">⋯</span><span>More</span></button>
+</nav>
+
+<div id="modal-root"></div>
+</body>
+</html>
