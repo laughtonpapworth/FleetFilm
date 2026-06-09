@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0f"/>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" />
@@ -67,6 +67,7 @@
         <button class="btn btn-primary" id="btn-add-film">+ Add Film</button>
         <input id="filter-q" type="text" placeholder="Search title, genre, language, country, director…">
         <select id="filter-status">
+          <option value="active" selected>Active (excl. Discarded &amp; Archived)</option>
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
           <option value="greenlist">Green List</option>
