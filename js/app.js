@@ -546,7 +546,7 @@ async function bulkRefetch() {
 }
 
 /* =================== Filters =================== */
-const filterState = { q: '', status: '', sort: 'created-desc' };
+const filterState = { q: '', status: 'active', sort: 'created-desc' };
 function setupFilters() {
   const q    = document.getElementById('filter-q');
   const s    = document.getElementById('filter-status');
@@ -556,8 +556,8 @@ function setupFilters() {
   s?.addEventListener('change', () => { filterState.status = s.value; loadFilms(); });
   sort?.addEventListener('change', () => { filterState.sort = sort.value; loadFilms(); });
   clr?.addEventListener('click', () => {
-    filterState.q = ''; filterState.status = ''; filterState.sort = 'created-desc';
-    if (q) q.value = ''; if (s) s.value = ''; if (sort) sort.value = 'created-desc';
+    filterState.q = ''; filterState.status = 'active'; filterState.sort = 'created-desc';
+    if (q) q.value = ''; if (s) s.value = 'active'; if (sort) sort.value = 'created-desc';
     loadFilms();
   });
 }
@@ -588,7 +588,12 @@ async function loadFilms() {
   const snap = await db.collection('films').get();
   let films = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  if (filterState.status) films = films.filter(f => f.status === filterState.status);
+  const HIDDEN_STATUSES = ['discarded', 'archived'];
+  if (filterState.status === 'active') {
+    films = films.filter(f => !HIDDEN_STATUSES.includes(f.status));
+  } else if (filterState.status) {
+    films = films.filter(f => f.status === filterState.status);
+  }
   if (filterState.q) {
     const q = filterState.q;
     films = films.filter(f =>
@@ -1055,9 +1060,11 @@ async function loadNextProg() {
   const list = document.getElementById('nextprog-list');
   list.innerHTML = '<div class="notice">Loading…</div>';
   const docs = await fetchByStatus('next_programme');
+  // Preserve date across reloads
+  const _existingProgDate = document.getElementById('programme-date')?.value || '';
   controls.innerHTML = `
     <div class="form-grid" style="margin-bottom:14px;">
-      <label>Programme date<input type="date" id="programme-date"></label>
+      <label>Programme date<input type="date" id="programme-date" value="${_existingProgDate}"></label>
       <div class="actions" style="align-self:end;flex-wrap:wrap;">
         <button class="btn btn-primary" id="btn-archive-9">Archive first 9</button>
         <button class="btn btn-danger" id="btn-archive-selected">Archive selected</button>
@@ -1065,14 +1072,38 @@ async function loadNextProg() {
         <button class="btn btn-ghost" id="btn-clear-select">Clear</button>
       </div>
     </div>`;
-  const getDate = () => document.getElementById('programme-date')?.value||'';
+  const getDate = () => document.getElementById('programme-date')?.value || '';
+
   const archiveFilms = async (ids, dateISO) => {
     if (!ids.length) { alert('Select some films first.'); return; }
-    if (!dateISO) { alert('Add a programme date first.'); return; }
-    const progRef = await db.collection('programmes').add({ dateISO, filmIds:ids, createdAt:firebase.firestore.FieldValue.serverTimestamp(), createdBy:state.user?.uid });
-    const batch = db.batch();
-    ids.forEach(id => batch.update(db.collection('films').doc(id), { status:'archived', archivedFrom:'next_programme', programmeId:progRef.id, programmeDate:dateISO, archivedAt:firebase.firestore.FieldValue.serverTimestamp() }));
-    await batch.commit();
+    if (!dateISO) { alert('Set a programme date first.'); return; }
+    if (!confirm('Archive ' + ids.length + ' film(s) with programme date ' + dateISO + '?')) return;
+
+    // Create programme record — non-fatal if user lacks permission
+    let progRef = null;
+    try {
+      progRef = await db.collection('programmes').add({
+        dateISO, filmIds: ids,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: state.user?.uid
+      });
+    } catch(e) {
+      console.warn('Programme record not created:', e?.message);
+    }
+
+    try {
+      const batch = db.batch();
+      ids.forEach(id => batch.update(db.collection('films').doc(id), {
+        status: 'archived', archivedFrom: 'next_programme',
+        programmeId: progRef ? progRef.id : '',
+        programmeDate: dateISO,
+        archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }));
+      await batch.commit();
+    } catch(e) {
+      alert('Archive failed: ' + (e.message || e));
+      return;
+    }
     loadNextProg();
   };
   document.getElementById('btn-archive-9')?.addEventListener('click', () => archiveFilms(docs.slice(0,9).map(d=>d.id), getDate()));
