@@ -635,16 +635,97 @@ function mapMpaaToUk(mpaa){
   return s;
 }
 
-/* =================== Picker (OMDb) =================== */
-function showPicker(items){
+/* =================== TMDB helpers =================== */
+function getTmdbKey(){
+  return (window.__FLEETFILM__CONFIG && window.__FLEETFILM__CONFIG.tmdbApiKey) || '';
+}
+
+/* Returns items normalised to the same shape as OMDb Search results */
+async function tmdbSearch(title, year){
+  const key = getTmdbKey();
+  if(!key) return [];
+  const params = new URLSearchParams({ api_key: key, query: title, include_adult: 'false', language: 'en-US', page: '1' });
+  if(year) params.set('year', String(year));
+  const url = 'https://api.themoviedb.org/3/search/movie?' + params.toString();
+  try{
+    const r = await fetch(url);
+    if(!r.ok) return [];
+    const data = await r.json();
+    if(!data.results || !data.results.length) return [];
+    return data.results.slice(0,10).map(m => ({
+      _source: 'tmdb',
+      _tmdbId: m.id,
+      Title: m.title,
+      OriginalTitle: m.original_title,
+      Year: m.release_date ? m.release_date.slice(0,4) : '',
+      Poster: m.poster_path ? 'https://image.tmdb.org/t/p/w154' + m.poster_path : 'N/A',
+      imdbID: '',
+      Type: 'movie',
+      OriginalLanguage: m.original_language || ''
+    }));
+  }catch(e){
+    console.warn('TMDB search error:', e && e.message);
+    return [];
+  }
+}
+
+async function tmdbDetailsById(tmdbId){
+  const key = getTmdbKey();
+  if(!key) return null;
+  const params = new URLSearchParams({ api_key: key, append_to_response: 'release_dates' });
+  try{
+    const r = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '?' + params.toString());
+    if(!r.ok) return null;
+    const m = await r.json();
+    if(!m || m.success === false) return null;
+    let ukCert = '';
+    if(m.release_dates && Array.isArray(m.release_dates.results)){
+      const gb = m.release_dates.results.find(c => c.iso_3166_1 === 'GB');
+      const us = m.release_dates.results.find(c => c.iso_3166_1 === 'US');
+      const pick = c => { if(!c) return ''; const rd = c.release_dates.find(rd => rd.certification); return rd ? rd.certification : ''; };
+      ukCert = pick(gb) || pick(us);
+    }
+    return {
+      _source: 'tmdb',
+      _tmdbId: m.id,
+      Response: 'True',
+      Title: m.title || '',
+      OriginalTitle: m.original_title || '',
+      Year: m.release_date ? m.release_date.slice(0,4) : '',
+      Rated: ukCert || 'N/A',
+      Runtime: m.runtime ? m.runtime + ' min' : 'N/A',
+      Genre: (m.genres || []).map(g => g.name).join(', ') || 'N/A',
+      Language: (m.spoken_languages && m.spoken_languages.length) ? m.spoken_languages.map(l => l.english_name || l.name).join(', ') : (m.original_language || 'N/A'),
+      Country: (m.production_countries || []).map(c => c.name).join(', ') || 'N/A',
+      Plot: m.overview || '',
+      Poster: m.poster_path ? 'https://image.tmdb.org/t/p/w300' + m.poster_path : 'N/A',
+      imdbID: m.imdb_id || ''
+    };
+  }catch(e){
+    console.warn('TMDB details error:', e && e.message);
+    return null;
+  }
+}
+
+function getSearchSource(){
+  const el = document.querySelector('input[name="search-source"]:checked');
+  return el ? el.value : 'omdb';
+}
+
+/* =================== Picker (OMDb + TMDB) =================== */
+function showPicker(items, source){
+  const isTmdb = source === 'tmdb';
   return new Promise(resolve=>{
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     const modal = document.createElement('div');
     modal.className = 'modal';
+    const srcBadge = isTmdb
+      ? '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#e0fdf4;color:#065f46;border:1px solid #a7f3d0;margin-left:8px">TMDB</span>'
+      : '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#e0f2fe;color:#075985;border:1px solid #bae6fd;margin-left:8px">OMDb</span>';
     modal.innerHTML =
       '<div class="modal-head">' +
-        '<h2>Select the correct film</h2>' +
+        '<h2>Select the correct film ' + srcBadge + '</h2>' +
         '<div style="display:flex; gap:8px; align-items:center;">' +
           '<button id="ff-picker-manual" class="btn btn-ghost">Add manually</button>' +
           '<button id="ff-picker-cancel" class="btn btn-ghost">Cancel</button>' +
@@ -656,19 +737,27 @@ function showPicker(items){
 
     const list = modal.querySelector('#ff-picker-list');
     if(!items || !items.length){
-      list.innerHTML = '<div class="notice">No matches found. You can “Add manually”.</div>';
+      list.innerHTML = '<div class="notice">No matches found. Try the other search source, or "Add manually".</div>';
     }else{
-      items.forEach(it=>{
+      items.forEach((it, idx)=>{
         const poster = (it.Poster && it.Poster!=='N/A') ? it.Poster : '';
+        const hasDiffOrig = it.OriginalTitle && it.OriginalTitle !== it.Title;
+        const titleLine = hasDiffOrig
+          ? it.Title + ' <em style="color:#6b7280;font-size:13px;font-weight:400">(' + it.OriginalTitle + ')</em>'
+          : it.Title;
+        const langNote = (it.OriginalLanguage && it.OriginalLanguage !== 'en') ? ' &bull; ' + it.OriginalLanguage.toUpperCase() : '';
+        const idStr = it.imdbID ? it.imdbID : (it._tmdbId ? 'tmdb:' + it._tmdbId : '');
         const row = document.createElement('div');
         row.className = 'modal-row';
         row.innerHTML =
-          (poster ? '<img src="'+poster+'" alt="poster" class="poster-small">' : '') +
+          (poster
+            ? '<img src="'+poster+'" alt="poster" class="poster-small">'
+            : '<div style="width:52px;flex-shrink:0"></div>') +
           '<div class="modal-row-main">' +
-            '<div class="modal-row-title">'+it.Title+' ('+it.Year+')</div>' +
-            '<div class="modal-row-sub">'+(it.Type || 'movie')+' • '+it.imdbID+'</div>' +
+            '<div class="modal-row-title">' + titleLine + ' (' + (it.Year||'?') + ')</div>' +
+            '<div class="modal-row-sub">' + (it.Type||'movie') + (idStr ? ' &bull; ' + idStr : '') + langNote + '</div>' +
           '</div>' +
-          '<button data-id="'+it.imdbID+'" class="btn btn-primary">Select</button>';
+          '<button data-idx="'+idx+'" class="btn btn-primary">Select</button>';
         list.appendChild(row);
       });
     }
@@ -682,15 +771,19 @@ function showPicker(items){
       resolve({ mode:'manual' });
     });
     list.addEventListener('click', (e)=>{
-      const btn = e.target.closest('button[data-id]');
+      const btn = e.target.closest('button[data-idx]');
       if(!btn) return;
-      const id = btn.getAttribute('data-id');
+      const idx = parseInt(btn.getAttribute('data-idx'), 10);
+      const item = items[idx];
       document.body.removeChild(overlay);
-      resolve({ mode:'pick', imdbID:id });
+      if(isTmdb){
+        resolve({ mode:'pick', imdbID: item.imdbID||'', _tmdbId: item._tmdbId, _source:'tmdb' });
+      } else {
+        resolve({ mode:'pick', imdbID: item.imdbID, _source:'omdb' });
+      }
     });
   });
 }
-
 async function fetchAddressesByPostcode(pc) {
   const norm = (pc || '').trim().toUpperCase().replace(/\s+/g, '');
   if (!norm) {
@@ -1009,16 +1102,13 @@ async function submitFilm(opts={ mode:'search' }){
 
   const imdbRaw = (els.imdb && els.imdb.value) ? els.imdb.value : '';
   const imdbID = extractImdbId(imdbRaw);
-
-  const title = (els.title && els.title.value) ? els.title.value.trim() : '';
+  const title  = (els.title && els.title.value) ? els.title.value.trim() : '';
   const yearStr = (els.year && els.year.value !== undefined) ? String(els.year.value).trim() : '';
-  const year = (/^\d{4}$/.test(yearStr)) ? parseInt(yearStr,10) : null;
+  const year   = (/^\d{4}$/.test(yearStr)) ? parseInt(yearStr,10) : null;
   const useYear = els.useYear ? !!els.useYear.checked : true;
+  const source  = getSearchSource(); // 'omdb' | 'tmdb'
 
-  if(!state.user){
-    alert('Please sign in first.');
-    return;
-  }
+  if(!state.user){ alert('Please sign in first.'); return; }
 
   // Manual add
   if(mode === 'manual'){
@@ -1027,84 +1117,104 @@ async function submitFilm(opts={ mode:'search' }){
     return;
   }
 
-  // IMDb exact match
-  if(imdbID){
-    const picked = await omdbDetailsById(imdbID);
-    if(!picked){
-      const ok = confirm('Could not load that IMDb ID from OMDb. Add manually instead?');
-      if(!ok) return;
-      if(!title){ alert('Title required for manual add'); return; }
-      await addFilmDoc({ title, year, picked: null });
+  // ── OMDb path ────────────────────────────────────────────
+  if(source === 'omdb'){
+    let picked = null;
+
+    // Exact IMDb ID lookup
+    if(imdbID){
+      picked = await omdbDetailsById(imdbID);
+      if(!picked){
+        const ok = confirm('Could not load that IMDb ID from OMDb. Add manually instead?');
+        if(!ok) return;
+        if(!title){ alert('Title required for manual add'); return; }
+        await addFilmDoc({ title, year, picked: null });
+        return;
+      }
+      await addFilmDoc({ title: picked.Title || title, year: (picked.Year && /^\d{4}$/.test(picked.Year)) ? parseInt(picked.Year,10) : year, picked });
       return;
     }
-    await addFilmDoc({ title: picked.Title || title, year: (picked.Year && /^\d{4}$/.test(picked.Year)) ? parseInt(picked.Year,10) : year, picked });
-    return;
-  }
 
-  if(!title){
-    alert('Enter a title or paste an IMDb link/ID.');
-    return;
-  }
+    if(!title){ alert('Enter a title or paste an IMDb link/ID.'); return; }
 
-  // OMDb search -> picker -> details
-  let picked = null;
-  try{
-    const doSearch = async (t, y) => {
-      const res = await omdbSearch(t, y);
-      return (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
-    };
+    let picked2 = null;
+    try{
+      const doSearch = async (t, y) => {
+        const res = await omdbSearch(t, y);
+        return (res && res.Search) ? res.Search.filter(x=>x.Type==='movie') : [];
+      };
+      const titleNorm = normalizeTitleForSearch(title);
+      let candidates = [];
 
-    const titleNorm = normalizeTitleForSearch(title);
-
-    let candidates = [];
-
-    if(mode === 'searchAgain'){
-      // Bias title-only search first
-      candidates = await doSearch(title, null);
-      if(!candidates.length && titleNorm && titleNorm.toLowerCase() !== title.toLowerCase()){
-        candidates = await doSearch(titleNorm, null);
-      }
-      if(!candidates.length && useYear && year){
-        candidates = await doSearch(title, year);
-      }
-    } else {
-      // Default: use year if provided + enabled
-      if(useYear && year){
-        candidates = await doSearch(title, year);
-      } else {
+      if(mode === 'searchAgain'){
         candidates = await doSearch(title, null);
+        if(!candidates.length && titleNorm && titleNorm.toLowerCase() !== title.toLowerCase())
+          candidates = await doSearch(titleNorm, null);
+        if(!candidates.length && useYear && year)
+          candidates = await doSearch(title, year);
+      } else {
+        if(useYear && year) candidates = await doSearch(title, year);
+        else candidates = await doSearch(title, null);
+        if(!candidates.length && titleNorm && titleNorm.toLowerCase() !== title.toLowerCase()){
+          candidates = useYear && year ? await doSearch(titleNorm, year) : await doSearch(titleNorm, null);
+        }
+        if(!candidates.length && useYear && year)
+          candidates = await doSearch(titleNorm || title, null);
       }
 
-      // Retry normalised title
-      if(!candidates.length && titleNorm && titleNorm.toLowerCase() !== title.toLowerCase()){
-        if(useYear && year) candidates = await doSearch(titleNorm, year);
-        else candidates = await doSearch(titleNorm, null);
-      }
-
-      // If year blocked results, retry without year
-      if(!candidates.length && useYear && year){
-        candidates = await doSearch(titleNorm || title, null);
-      }
+      const choice = await showPicker(candidates, 'omdb');
+      if(choice.mode === 'cancel') return;
+      if(choice.mode === 'manual'){ await addFilmDoc({ title, year, picked: null }); return; }
+      if(choice.mode === 'pick' && choice.imdbID) picked2 = await omdbDetailsById(choice.imdbID);
+    }catch(e){
+      console.warn('OMDb search failed:', e && e.message);
+      const ok = confirm('Could not reach OMDb. Add the film manually?');
+      if(!ok) return;
     }
-
-    const choice = await showPicker(candidates);
-    if(choice.mode === 'cancel') return;
-    if(choice.mode === 'manual'){
-      await addFilmDoc({ title, year, picked: null });
-      return;
-    }
-    if(choice.mode === 'pick' && choice.imdbID){
-      picked = await omdbDetailsById(choice.imdbID);
-    }
-  }catch(e){
-    console.warn('OMDb search failed:', e && e.message);
-    const ok = confirm('Could not reach OMDb. Add the film manually?');
-    if(!ok) return;
+    await addFilmDoc({ title, year, picked: picked2 });
+    return;
   }
 
-  await addFilmDoc({ title, year, picked });
-}
+  // ── TMDB path ────────────────────────────────────────────
+  if(source === 'tmdb'){
+    if(!title){ alert('Enter a film title to search TMDB.'); return; }
+    if(!getTmdbKey()){
+      alert('TMDB API key not configured. Ask an admin to add tmdbApiKey to the app config, or use "Add manually".');
+      return;
+    }
+    let picked = null;
+    try{
+      let candidates = [];
+      if(mode === 'searchAgain'){
+        candidates = await tmdbSearch(title, null);
+        if(!candidates.length && useYear && year) candidates = await tmdbSearch(title, year);
+      } else {
+        candidates = (useYear && year) ? await tmdbSearch(title, year) : await tmdbSearch(title, null);
+        if(!candidates.length && useYear && year) candidates = await tmdbSearch(title, null);
+      }
 
+      const choice = await showPicker(candidates, 'tmdb');
+      if(choice.mode === 'cancel') return;
+      if(choice.mode === 'manual'){ await addFilmDoc({ title, year, picked: null }); return; }
+      if(choice.mode === 'pick' && choice._tmdbId){
+        picked = await tmdbDetailsById(choice._tmdbId);
+        // Top up UK cert from OMDb if TMDB didn't supply one
+        if(picked && picked.imdbID && getOmdbKey()){
+          try{
+            const od = await omdbDetailsById(picked.imdbID);
+            if(od && (!picked.Rated || picked.Rated === 'N/A')) picked.Rated = od.Rated;
+          }catch(e2){ /* non-fatal */ }
+        }
+      }
+    }catch(e){
+      console.warn('TMDB search failed:', e && e.message);
+      const ok = confirm('Could not reach TMDB. Try OMDb or add manually?');
+      if(!ok) return;
+    }
+    await addFilmDoc({ title, year, picked });
+    return;
+  }
+}
 async function addFilmDoc({ title, year, picked }){
   const base = {
     title: title || '',
@@ -1143,11 +1253,15 @@ async function addFilmDoc({ title, year, picked }){
     }
     base.posterUrl = (picked.Poster && picked.Poster!=='N/A') ? picked.Poster : '';
     base.ageRating = picked.Rated && picked.Rated!=='N/A' ? picked.Rated : '';
-    base.ukAgeRating = mapMpaaToUk(base.ageRating);
+    // TMDB already returns UK cert; OMDb returns MPAA so we map it
+    base.ukAgeRating = (picked._source === 'tmdb')
+      ? (base.ageRating && base.ageRating !== 'N/A' ? base.ageRating : '')
+      : mapMpaaToUk(base.ageRating);
     base.genre = picked.Genre && picked.Genre!=='N/A' ? picked.Genre : '';
     base.language = picked.Language && picked.Language!=='N/A' ? picked.Language : '';
     base.country = picked.Country && picked.Country!=='N/A' ? picked.Country : '';
     base.imdbID = picked.imdbID || '';
+    if(picked._tmdbId) base.tmdbID = String(picked._tmdbId);
     if(runtimeMinutes) base.runtimeMinutes = runtimeMinutes;
     if(picked.Plot && picked.Plot!=='N/A') base.synopsis = picked.Plot;
     if(picked.Title) base.title = picked.Title;
@@ -1155,7 +1269,7 @@ async function addFilmDoc({ title, year, picked }){
   }
 
   const ref = await db.collection('films').add(base);
-  await logAudit(ref.id, 'create', { via: picked ? (base.imdbID ? 'omdb' : 'picker') : 'manual' });
+  await logAudit(ref.id, 'create', { via: picked ? (picked._source === 'tmdb' ? 'tmdb' : (base.imdbID ? 'omdb' : 'picker')) : 'manual' });
 
   if(els.submitMsg){
     els.submitMsg.textContent = 'Added to Basic Criteria.';
@@ -2357,20 +2471,23 @@ async function loadGreen(){
 async function loadNextProgramme(){
   const docs = await fetchByStatus('next_programme');
 
+  // Preserve any date already typed before rebuilding innerHTML
+  const existingDate = (document.getElementById('programme-date') || {}).value || '';
+
   els.nextProgList.innerHTML = `
     <div class="form-grid" style="margin-bottom:8px">
-      <label>Programme date
-        <input type="date" id="programme-date" />
+      <label>Programme start date
+        <input type="date" id="programme-date" value="${existingDate}" />
       </label>
 
       <div class="actions" style="align-self:end; display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-primary" id="btn-archive-9">Archive 9 (programme)</button>
+        <button class="btn btn-primary" id="btn-archive-9">Archive first 9</button>
         <button class="btn btn-danger" id="btn-archive-selected">Archive selected</button>
         <button class="btn btn-ghost" id="btn-select-first9">Select first 9</button>
-        <button class="btn btn-ghost" id="btn-clear-select">Clear</button>
+        <button class="btn btn-ghost" id="btn-clear-select">Clear selection</button>
       </div>
       <div class="span-2 notice" style="margin-top:0">
-        Tip: Next Programme is meant to hold the 9 films for the next cycle. Archiving creates a Programme record and stores the programme date on each film for reporting.
+        Set the programme start date above, then use <strong>Archive first 9</strong> (or tick individual films and use <strong>Archive selected</strong>) to close this programme cycle. Each film is moved to Archive and tagged with the programme date.
       </div>
     </div>
   `;
@@ -2382,97 +2499,102 @@ async function loadNextProgramme(){
 
   const archiveFilms = async (ids, programmeDateISO) => {
     if (!ids.length) { alert('Select some films first.'); return; }
-    if (!programmeDateISO) { alert('Add the programme date first.'); return; }
+    if (!programmeDateISO) { alert('Set the programme start date first.'); return; }
+    if (!confirm('Archive ' + ids.length + ' film(s) with programme date ' + programmeDateISO + '?')) return;
 
-    // Create a Programme record (so we can report/export by programme)
-    const progRef = await db.collection('programmes').add({
-      dateISO: programmeDateISO,
-      filmIds: ids,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy: state.user ? state.user.uid : null,
-      createdByEmail: state.user ? (state.user.email || '') : ''
-    });
-
-    const batch = db.batch();
-    ids.forEach(id=>{
-      const ref = db.collection('films').doc(id);
-      batch.update(ref, {
-        status: 'archived',
-        archivedFrom: 'next_programme',
-        programmeId: progRef.id,
-        programmeDate: programmeDateISO,
-        archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+    // Try to create a Programme record — non-fatal if user lacks permission
+    let progRef = null;
+    try {
+      progRef = await db.collection('programmes').add({
+        dateISO: programmeDateISO,
+        filmIds: ids,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: state.user ? state.user.uid : null,
+        createdByEmail: state.user ? (state.user.email || '') : ''
       });
-    });
-    await batch.commit();
+    } catch(e) {
+      console.warn('Programme record not created (permission?):', e && e.message);
+    }
 
-    // Audit (best-effort)
-    for(const id of ids){
-      await logAudit(id, 'archive_programme', { programmeId: progRef.id, programmeDate: programmeDateISO });
+    // Archive all selected films in a single batch
+    try {
+      const batch = db.batch();
+      ids.forEach(id => {
+        const ref = db.collection('films').doc(id);
+        batch.update(ref, {
+          status: 'archived',
+          archivedFrom: 'next_programme',
+          programmeId: progRef ? progRef.id : '',
+          programmeDate: programmeDateISO,
+          archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      await batch.commit();
+    } catch(e) {
+      alert('Archive failed: ' + (e.message || e));
+      return;
+    }
+
+    // Audit trail — best-effort, non-blocking
+    for (const id of ids) {
+      try {
+        await logAudit(id, 'archive_programme', { programmeId: progRef ? progRef.id : '', programmeDate: programmeDateISO });
+      } catch(e) { /* ignore */ }
     }
 
     loadNextProgramme();
   };
 
-  // Wire buttons
+  // Wire bulk action buttons
   document.getElementById('btn-archive-9')?.addEventListener('click', async () => {
-    const programmeDateISO = getProgrammeDate();
-    const ids = docs.slice(0, 9).map(d=>d.id);
-    await archiveFilms(ids, programmeDateISO);
+    await archiveFilms(docs.slice(0, 9).map(d => d.id), getProgrammeDate());
   });
 
   document.getElementById('btn-archive-selected')?.addEventListener('click', async () => {
-    const programmeDateISO = getProgrammeDate();
-    const ids = Array.from(els.nextProgList.querySelectorAll('input[type="checkbox"][data-select-film]:checked'))
-      .map(cb=>cb.getAttribute('data-select-film'));
-    await archiveFilms(ids, programmeDateISO);
+    const ids = Array.from(
+      els.nextProgList.querySelectorAll('input[type="checkbox"][data-select-film]:checked')
+    ).map(cb => cb.getAttribute('data-select-film'));
+    await archiveFilms(ids, getProgrammeDate());
   });
 
   document.getElementById('btn-select-first9')?.addEventListener('click', () => {
-    const cbs = Array.from(els.nextProgList.querySelectorAll('input[type="checkbox"][data-select-film]'));
-    cbs.forEach((cb, i)=> cb.checked = i < 9);
+    Array.from(els.nextProgList.querySelectorAll('input[type="checkbox"][data-select-film]'))
+      .forEach((cb, i) => cb.checked = i < 9);
   });
 
   document.getElementById('btn-clear-select')?.addEventListener('click', () => {
-    els.nextProgList.querySelectorAll('input[type="checkbox"][data-select-film]').forEach(cb=> cb.checked = false);
+    els.nextProgList.querySelectorAll('input[type="checkbox"][data-select-film]')
+      .forEach(cb => cb.checked = false);
   });
 
   if (!docs.length) {
-    els.nextProgList.insertAdjacentHTML(
-      'beforeend',
-      '<div class="notice">No films in Next Programme.</div>'
-    );
+    els.nextProgList.insertAdjacentHTML('beforeend', '<div class="notice">No films in Next Programme.</div>');
     return;
   }
 
   docs.forEach(doc => {
     const f = { id: doc.id, ...doc.data() };
     const greenAt = (f.greenAt && typeof f.greenAt.toDate === 'function')
-      ? f.greenAt.toDate().toISOString().slice(0,10)
-      : '—';
+      ? f.greenAt.toDate().toISOString().slice(0, 10) : '—';
 
     const actions = `
       <div class="actions" style="gap:8px; flex-wrap:wrap;">
-        <label class="badge" style="display:flex; align-items:center; gap:8px;">
-          <input type="checkbox" data-select-film="${f.id}" />
+        <label class="badge" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" data-select-film="${f.id}" style="width:auto;margin:0" />
           Select
         </label>
         <span class="badge">Green since: ${greenAt}</span>
-        <button class="btn" data-act="to-archive" data-id="${f.id}">Archive (no programme date)</button>
-        ${
-          isAdmin()
-            ? `
-              <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
-              <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete (permanent)</button>
-            `
-            : ''
-        }
+        <button class="btn" data-act="to-archive-prog" data-id="${f.id}">Archive individually</button>
+        ${isAdmin() ? `
+          <button class="btn" data-act="edit-film" data-id="${f.id}">Edit details</button>
+          <button class="btn btn-danger" data-act="delete-film" data-id="${f.id}">Delete (permanent)</button>
+        ` : ''}
       </div>
     `;
-
     els.nextProgList.insertAdjacentHTML('beforeend', detailCard(f, actions));
   });
 
+  // Wire per-film buttons — all stay on this page after acting
   els.nextProgList.querySelectorAll('button[data-id]').forEach(b => {
     b.addEventListener('click', async () => {
       const act = b.dataset.act;
@@ -2481,14 +2603,37 @@ async function loadNextProgramme(){
       if (act === 'edit-film') {
         if (!isAdmin()) return;
         await openEditFilmModal(id);
+        loadNextProgramme();
         return;
       }
 
+      if (act === 'to-archive-prog') {
+        // Archive a single film, picking up whatever date is in the field
+        const programmeDateISO = getProgrammeDate();
+        const msg = 'Archive this film individually?' + (programmeDateISO ? ' Programme date: ' + programmeDateISO + '.' : ' (no programme date set — film will still be archived)');
+        if (!confirm(msg)) return;
+        try {
+          await db.collection('films').doc(id).update({
+            status: 'archived',
+            archivedFrom: 'next_programme',
+            programmeDate: programmeDateISO || '',
+            archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          try { await logAudit(id, 'archive_programme', { individual: true, programmeDate: programmeDateISO || '' }); } catch(e){}
+        } catch(e) {
+          alert('Archive failed: ' + (e.message || e));
+          return;
+        }
+        loadNextProgramme();
+        return;
+      }
+
+      // delete-film and other admin actions
       await adminAction(act, id);
+      loadNextProgramme();
     });
   });
 }
-
 // Legacy helper kept for backwards compatibility (no longer used by UI)
 async function archiveAllNextProg(){
   const docs = await fetchByStatus('next_programme');
