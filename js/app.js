@@ -1,8 +1,10 @@
 /* Fleet Film App – Film List landing, TMDB-powered, Passport-centric */
 
 let app, auth, db;
-const state = { user: null, role: 'member' };
+const state = { user: null, role: 'member', canDelete: false };
 function isAdmin() { return state.role === 'admin'; }
+// Permanent delete: admins, or anyone whose users/{uid} doc has canDelete: true
+function canDelete() { return isAdmin() || state.canDelete; }
 
 function currentActor() {
   return {
@@ -126,7 +128,7 @@ function showTmdbPicker(results, initialQuery) {
     const renderResults = items => {
       const list = overlay.querySelector('#picker-list');
       if (!items.length) {
-        list.innerHTML = `<div class="tmdb-no-result"><div style="font-size:40px;margin-bottom:10px;">🎬</div>No results. Try different spelling or add manually.</div>`;
+        list.innerHTML = `<div class="tmdb-no-result"><div style="font-size:2.5rem;margin-bottom:10px;">🎬</div>No results. Try different spelling or add manually.</div>`;
         return;
       }
       list.innerHTML = '';
@@ -134,14 +136,14 @@ function showTmdbPicker(results, initialQuery) {
         const year = it.release_date?.slice(0, 4) || '?';
         const poster = it.poster_path
           ? `<img src="${TMDB_IMG}${it.poster_path}" alt="poster" class="poster-small" loading="lazy">`
-          : '<div class="poster-small" style="display:flex;align-items:center;justify-content:center;font-size:20px;background:var(--surface-2);">🎬</div>';
+          : '<div class="poster-small" style="display:flex;align-items:center;justify-content:center;font-size:1.25rem;background:var(--surface-2);">🎬</div>';
         const row = document.createElement('div');
         row.className = 'modal-row';
         row.innerHTML = poster +
           `<div class="modal-row-main">
-            <div class="modal-row-title">${escapeHtml(it.title)}${it.original_title && it.original_title !== it.title ? ` <span style="color:var(--ink-3);font-size:13px;font-style:italic;">(${escapeHtml(it.original_title)})</span>` : ''}</div>
-            <div class="modal-row-sub">${year} · <span style="text-transform:uppercase;font-size:10px;background:var(--gold-soft);color:var(--gold);padding:1px 5px;border-radius:4px;">${it.original_language||''}</span>${it.vote_count > 0 ? ` · ★ ${it.vote_average?.toFixed(1)}` : ''}</div>
-            ${it.overview ? `<div style="font-size:12px;color:var(--ink-3);margin-top:4px;line-height:1.4;">${escapeHtml(it.overview.slice(0,120))}${it.overview.length>120?'…':''}</div>` : ''}
+            <div class="modal-row-title">${escapeHtml(it.title)}${it.original_title && it.original_title !== it.title ? ` <span style="color:var(--ink-3);font-size:0.9063rem;font-style:italic;">(${escapeHtml(it.original_title)})</span>` : ''}</div>
+            <div class="modal-row-sub">${year} · <span style="text-transform:uppercase;font-size:0.7813rem;background:var(--gold-soft);color:var(--gold);padding:1px 5px;border-radius:4px;">${it.original_language||''}</span>${it.vote_count > 0 ? ` · ★ ${it.vote_average?.toFixed(1)}` : ''}</div>
+            ${it.overview ? `<div style="font-size:0.8438rem;color:var(--ink-3);margin-top:4px;line-height:1.4;">${escapeHtml(it.overview.slice(0,120))}${it.overview.length>120?'…':''}</div>` : ''}
           </div>
           <button data-tmdb-id="${it.id}" class="btn btn-primary" style="flex-shrink:0;">Select</button>`;
         list.appendChild(row);
@@ -236,6 +238,7 @@ function showAddFilmModal() {
 /* =================== PAGE DEFS =================== */
 const PAGE_DEFS = [
   ['films',     'Film List'],
+  ['inprogress','In Progress'],
   ['green',     'Green List'],
   ['nextprog',  'Next Programme'],
   ['discarded', 'Discarded'],
@@ -243,7 +246,7 @@ const PAGE_DEFS = [
   ['calendar',  'Calendar'],
   ['addresses', 'Addresses'],
 ];
-const STATUS_LABELS = { pending:'Pending', greenlist:'Green List', next_programme:'Next Programme', discarded:'Discarded', archived:'Archived' };
+const STATUS_LABELS = { pending:'Pending', in_progress:'In Progress', greenlist:'Green List', next_programme:'Next Programme', discarded:'Discarded', archived:'Archived' };
 function humanStatus(s) { return STATUS_LABELS[s] || s || ''; }
 
 /* =================== Calendar =================== */
@@ -309,12 +312,13 @@ function initFirebaseOnce() {
 }
 
 /* =================== Router =================== */
-const VIEWS = ['films','green','nextprog','discarded','archive','calendar','addresses'];
+const VIEWS = ['films','inprogress','green','nextprog','discarded','archive','calendar','addresses'];
 
 function setView(name) {
   document.querySelectorAll('.nav .btn-pill, .mobile-tabbar button[data-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.view === name));
   VIEWS.forEach(v => document.getElementById(`view-${v}`)?.classList.toggle('hidden', v !== name));
   if (name === 'films')     return loadFilms();
+  if (name === 'inprogress') return loadInProgress();
   if (name === 'green')     return loadGreen();
   if (name === 'nextprog')  return loadNextProg();
   if (name === 'discarded') return loadDiscarded();
@@ -343,13 +347,14 @@ async function ensureUserDoc(u) {
   else await ref.set(base, { merge: true });
   const rs = await ref.get();
   state.role = rs.data()?.role || 'member';
+  state.canDelete = rs.data()?.canDelete === true;
   document.getElementById('nav-addresses')?.classList.toggle('hidden', state.role !== 'admin');
   document.getElementById('btn-bulk-refetch')?.classList.toggle('hidden', state.role !== 'admin');
 }
 
 /* =================== Handlers =================== */
 function attachHandlers() {
-  document.querySelectorAll('.nav .btn-pill').forEach(btn => btn.addEventListener('click', () => { location.hash = btn.dataset.view; }));
+  document.querySelectorAll('.nav .btn-pill[data-view]').forEach(btn => btn.addEventListener('click', () => { location.hash = btn.dataset.view; }));
   document.getElementById('btn-signout')?.addEventListener('click', () => auth.signOut());
 
   // Add Film button
@@ -387,12 +392,32 @@ function attachHandlers() {
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `<div class="modal" style="max-width:340px;"><div class="modal-head"><h2>More</h2><button class="btn btn-ghost" id="more-close">✕</button></div><div class="modal-list" id="more-list"></div></div>`;
     document.body.appendChild(overlay);
-    PAGE_DEFS.forEach(([view, label]) => {
+    PAGE_DEFS.filter(([view]) => view !== 'addresses' || isAdmin()).forEach(([view, label]) => {
       const b = document.createElement('button'); b.className = 'btn'; b.textContent = label;
       b.onclick = () => { location.hash = view; document.body.removeChild(overlay); };
       overlay.querySelector('#more-list').appendChild(b);
     });
+    overlay.querySelector('#more-list').insertAdjacentHTML('beforeend', `
+      <div class="hr" style="margin:6px 0"></div>
+      <button class="btn" data-open-display>Aa Text size &amp; colours</button>
+      <button class="btn" data-app-refresh>⟳ Get latest version</button>
+      <button class="btn btn-ghost" id="more-signout">Sign out</button>
+      <div class="app-version" style="text-align:center">Version <span data-app-version>…</span></div>`);
+    window.FleetUpdate?.setVersionLabels();
+    overlay.querySelector('#more-signout').onclick = () => { document.body.removeChild(overlay); auth.signOut(); };
+    overlay.querySelector('#more-list').addEventListener('click', e => {
+      if (e.target.closest('[data-open-display],[data-app-refresh]')) overlay.remove();
+    });
     overlay.querySelector('#more-close').onclick = () => document.body.removeChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  });
+
+  // Escape closes the top-most pop-up (same as tapping outside it)
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const overlays = document.querySelectorAll('.modal-overlay');
+    const top = overlays[overlays.length - 1];
+    if (top) top.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
 
   setupFilters();
@@ -513,7 +538,7 @@ async function bulkRefetch() {
       </div>
       <div class="film-row-actions">
         <button class="btn btn-primary btn-sm" data-refetch="${f.id}" data-title="${escapeHtml(f.title)}" data-year="${f.year||''}">Search TMDB</button>
-        <span class="bulk-done hidden badge badge-green" style="font-size:11px;">✓ Done</span>
+        <span class="bulk-done hidden badge badge-green" style="font-size:0.8125rem;">✓ Done</span>
       </div>`;
     listEl.appendChild(row);
   });
@@ -552,7 +577,11 @@ function setupFilters() {
   const s    = document.getElementById('filter-status');
   const sort = document.getElementById('filter-sort');
   const clr  = document.getElementById('filter-clear');
-  q?.addEventListener('input', () => { filterState.q = q.value.trim().toLowerCase(); loadFilms(); });
+  let qTimer;
+  q?.addEventListener('input', () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { filterState.q = q.value.trim().toLowerCase(); loadFilms(); }, 300);
+  });
   s?.addEventListener('change', () => { filterState.status = s.value; loadFilms(); });
   sort?.addEventListener('change', () => { filterState.sort = sort.value; loadFilms(); });
   clr?.addEventListener('click', () => {
@@ -569,7 +598,7 @@ function escapeHtml(s) {
 
 function showToast(msg) {
   const t = document.createElement('div');
-  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0a0a0f;padding:10px 22px;border-radius:999px;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,0.4);';
+  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--gold);color:var(--on-gold);padding:10px 22px;border-radius:999px;font-weight:700;font-size:0.9688rem;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,0.4);';
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.style.opacity = '0', 1800);
@@ -577,7 +606,7 @@ function showToast(msg) {
 }
 
 function statusBadgeClass(s) {
-  return { greenlist:'badge-green', next_programme:'badge-blue', discarded:'badge-red', archived:'badge-muted' }[s] || 'badge-neutral';
+  return { in_progress:'badge-amber', greenlist:'badge-green', next_programme:'badge-blue', discarded:'badge-red', archived:'badge-muted' }[s] || 'badge-neutral';
 }
 
 /* =================== Film List =================== */
@@ -634,10 +663,10 @@ function filmRowCard(f) {
     ? `<img alt="Poster" src="${escapeHtml(f.posterUrl)}" style="width:66px;height:99px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" loading="lazy">`
     : '<div class="poster-placeholder">🎬</div>';
   const origTitle = f.originalTitle && f.originalTitle !== f.title
-    ? `<div style="font-size:12px;color:var(--ink-3);font-style:italic;margin-top:1px;">${escapeHtml(f.originalTitle)}</div>` : '';
+    ? `<div style="font-size:0.8438rem;color:var(--ink-3);font-style:italic;margin-top:1px;">${escapeHtml(f.originalTitle)}</div>` : '';
   const meta = [f.genre, f.language, f.runtimeMinutes ? `${f.runtimeMinutes} min` : null, f.director].filter(Boolean);
   return `
-    <div class="film-row-card">
+    <div class="film-row-card" data-film-card="${f.id}">
       <div class="film-row-poster">${poster}</div>
       <div class="film-row-info">
         <div class="film-row-title">${escapeHtml(f.title)} <span class="film-row-year">${year}</span></div>
@@ -673,12 +702,15 @@ function simpleFilmCard(f, extraHtml = '') {
 }
 
 function attachPassportButtons(container) {
-  container.querySelectorAll('button[data-open-passport]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const doc = await db.collection('films').doc(btn.dataset.openPassport).get();
-      if (doc.exists) openPassport({ id: doc.id, ...doc.data() });
-    });
-  });
+  // Tapping anywhere on a card opens its Passport (except on checkboxes / other controls)
+  container.onclick = async e => {
+    const card = e.target.closest('[data-film-card]');
+    if (!card) return;
+    const ctl = e.target.closest('input, label, select, textarea, a, button');
+    if (ctl && !ctl.matches('button[data-open-passport]')) return;
+    const doc = await db.collection('films').doc(card.dataset.filmCard).get();
+    if (doc.exists) openPassport({ id: doc.id, ...doc.data() });
+  };
 }
 
 /* =================== Fetch by status =================== */
@@ -704,7 +736,7 @@ async function openPassport(f) {
         <div>
           <span class="passport-label">✦ FILM PASSPORT</span>
           <h2 class="passport-film-title">${escapeHtml(f.title)}${f.year ? `<span class="passport-year">(${f.year})</span>` : ''}</h2>
-          ${f.originalTitle && f.originalTitle !== f.title ? `<div style="font-size:13px;color:var(--ink-3);font-style:italic;margin-top:2px;">${escapeHtml(f.originalTitle)}</div>` : ''}
+          ${f.originalTitle && f.originalTitle !== f.title ? `<div style="font-size:0.9063rem;color:var(--ink-3);font-style:italic;margin-top:2px;">${escapeHtml(f.originalTitle)}</div>` : ''}
         </div>
         <div class="passport-header-actions">
           <span class="badge ${statusBadgeClass(f.status)}">${humanStatus(f.status)}</span>
@@ -722,23 +754,24 @@ async function openPassport(f) {
             <span class="passport-section-label">Pipeline Status</span>
             <select id="pp-status" class="passport-status-select">
               <option value="pending"        ${f.status==='pending'?'selected':''}>Pending</option>
+              <option value="in_progress"    ${f.status==='in_progress'?'selected':''}>In Progress</option>
               <option value="greenlist"      ${f.status==='greenlist'?'selected':''}>Green List</option>
               <option value="next_programme" ${f.status==='next_programme'?'selected':''}>Next Programme</option>
               <option value="discarded"      ${f.status==='discarded'?'selected':''}>Discarded</option>
               <option value="archived"       ${f.status==='archived'?'selected':''}>Archived</option>
             </select>
             <div id="pp-discard-wrap" class="${f.status==='discarded'?'':'hidden'}" style="margin-top:8px">
-              <label style="text-transform:none;letter-spacing:0;font-size:12px;">Reason for discarding</label>
+              <label style="text-transform:none;letter-spacing:0;font-size:0.8438rem;">Reason for discarding</label>
               <textarea id="pp-discard-reason" rows="2" placeholder="Why was this discarded?">${escapeHtml(f.discardedReason||'')}</textarea>
             </div>
             <div id="pp-green-wrap" style="margin-top:6px" class="${['greenlist','next_programme','archived'].includes(f.status)?'':'hidden'}">
-              ${f.greenAt?.toDate ? `<span class="badge badge-green" style="font-size:11px;">🌿 Green since ${f.greenAt.toDate().toISOString().slice(0,10)}</span>` : ''}
+              ${f.greenAt?.toDate ? `<span class="badge badge-green" style="font-size:0.8125rem;">🌿 Green since ${f.greenAt.toDate().toISOString().slice(0,10)}</span>` : ''}
             </div>
             <button class="btn btn-primary" id="pp-save-status" style="width:100%;margin-top:10px;">Save Status</button>
           </div>
 
-          ${isAdmin() ? `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-            <button class="btn btn-danger" id="pp-delete" style="width:100%;font-size:12px;">🗑 Permanent Delete</button>
+          ${canDelete() ? `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <button class="btn btn-danger" id="pp-delete" style="width:100%;font-size:0.8438rem;">🗑 Permanent Delete</button>
           </div>` : ''}
         </div>
 
@@ -790,8 +823,15 @@ async function openPassport(f) {
   document.body.appendChild(overlay);
   const $ = sel => overlay.querySelector(sel);
 
-  $('#passport-close').onclick = () => document.body.removeChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+  // Warn before closing with unsaved edits on the Details tab
+  let detailsDirty = false;
+  $('#pp-tab-details').addEventListener('input', () => { detailsDirty = true; });
+  const closePassport = () => {
+    if (detailsDirty && !confirm('You have unsaved changes to the film details. Close without saving?')) return;
+    overlay.remove();
+  };
+  $('#passport-close').onclick = closePassport;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closePassport(); });
 
   overlay.querySelectorAll('.passport-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -851,6 +891,7 @@ async function openPassport(f) {
     try {
       await db.collection('films').doc(f.id).update(payload);
       await logAudit(f.id, 'edit_details', {});
+      detailsDirty = false;
       const msg = $('#pp-details-msg');
       if (msg) { msg.textContent='Saved ✓'; msg.classList.remove('hidden'); setTimeout(()=>msg.classList.add('hidden'),2000); }
     } catch (e) { alert(e.message||'Failed to save'); }
@@ -871,7 +912,7 @@ async function openPassport(f) {
     }
   };
 
-  if (isAdmin()) {
+  if (canDelete()) {
     $('#pp-delete').onclick = async () => {
       if (!confirm('Permanently delete this film and all votes? This cannot be undone.')) return;
       await deleteFilmCompletely(f.id);
@@ -913,7 +954,7 @@ async function loadPassportVotes(filmId, overlay) {
     : '<div class="notice">No votes yet.</div>';
   const notVotedHtml = notVoted.length
     ? notVoted.map(u=>`<span class="badge badge-muted">${escapeHtml(u.displayName||u.email||u.uid)}</span>`).join(' ')
-    : '<span style="font-size:13px;color:var(--ink-3)">Everyone has voted.</span>';
+    : '<span style="font-size:0.9063rem;color:var(--ink-3)">Everyone has voted.</span>';
 
   container.innerHTML = `
     <div class="vote-summary-bar">
@@ -927,7 +968,7 @@ async function loadPassportVotes(filmId, overlay) {
       <button class="btn vote-btn ${myVoteVal===0?'vote-active-und':''}" data-v="0">🤷 Undecided</button>
       <button class="btn vote-btn ${myVoteVal===-1?'vote-active-no':''}" data-v="-1">👎 No</button>
     </div>
-    <label style="margin-top:12px;display:block;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink-2);">Comment — editable anytime
+    <label style="margin-top:12px;display:block;text-transform:none;letter-spacing:0;font-size:0.9063rem;color:var(--ink-2);">Comment — editable anytime
       <textarea id="pp-vote-comment" rows="2" placeholder="Your thoughts…">${escapeHtml(myComment)}</textarea>
     </label>
     <button class="btn btn-primary" id="pp-cast-vote" style="margin-top:8px;">Save My Vote</button>
@@ -1041,6 +1082,16 @@ async function loadPassportHistory(filmId, overlay) {
 }
 
 /* =================== Status views =================== */
+async function loadInProgress() {
+  const list = document.getElementById('inprogress-list');
+  list.innerHTML = '<div class="notice">Loading…</div>';
+  const docs = await fetchByStatus('in_progress');
+  list.innerHTML = '';
+  if (!docs.length) { list.innerHTML = '<div class="notice">Nothing in progress.</div>'; return; }
+  docs.forEach(doc => list.insertAdjacentHTML('beforeend', simpleFilmCard({ id:doc.id, ...doc.data() })));
+  attachPassportButtons(list);
+}
+
 async function loadGreen() {
   const list = document.getElementById('green-list');
   list.innerHTML = '<div class="notice">Loading…</div>';
@@ -1119,10 +1170,10 @@ async function loadNextProg() {
     const f = { id:doc.id, ...doc.data() };
     const greenAt = f.greenAt?.toDate?.()?.toISOString?.().slice(0,10)||'—';
     const extra = `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink-2);">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9063rem;color:var(--ink-2);">
         <input type="checkbox" data-select-film="${f.id}" style="width:auto;margin:0;accent-color:var(--gold);"> Select
       </label>
-      <span class="badge badge-green" style="font-size:11px;">🌿 ${greenAt}</span>
+      <span class="badge badge-green" style="font-size:0.8125rem;">🌿 ${greenAt}</span>
     </div>`;
     list.insertAdjacentHTML('beforeend', simpleFilmCard(f, extra));
   });
@@ -1159,7 +1210,7 @@ async function loadArchive() {
 
 /* =================== CSV Export =================== */
 async function exportCsv(type) {
-  const statusMap = { green:'greenlist', nextprog:'next_programme', archive:'archived' };
+  const statusMap = { inprogress:'in_progress', green:'greenlist', nextprog:'next_programme', archive:'archived' };
   const status = statusMap[type];
   if (!status) return;
   const docs = await fetchByStatus(status);
@@ -1239,7 +1290,7 @@ function showAddLocationModal(prefill={}) {
       const listEl=$('#loc-options'); listEl.innerHTML='<div class="notice">Searching…</div>';
       const results=await fetchAddressesByPostcode(pc); listEl.innerHTML='';
       if(!results.length){listEl.innerHTML='<div class="notice">No results. Enter manually.</div>';return;}
-      results.forEach(a=>{const b=document.createElement('button');b.className='btn btn-ghost';b.type='button';b.style.cssText='width:100%;text-align:left;margin-bottom:4px;font-size:13px;';b.textContent=a.label;b.onclick=()=>{$('#loc-house').value=a.house||'';$('#loc-street').value=a.street||'';$('#loc-town').value=a.town||'';$('#loc-county').value=a.county||'';$('#loc-postcode').value=a.postcode;listEl.innerHTML='';};listEl.appendChild(b);});
+      results.forEach(a=>{const b=document.createElement('button');b.className='btn btn-ghost';b.type='button';b.style.cssText='width:100%;text-align:left;margin-bottom:4px;font-size:0.9063rem;';b.textContent=a.label;b.onclick=()=>{$('#loc-house').value=a.house||'';$('#loc-street').value=a.street||'';$('#loc-town').value=a.town||'';$('#loc-county').value=a.county||'';$('#loc-postcode').value=a.postcode;listEl.innerHTML='';};listEl.appendChild(b);});
     };
     $('#loc-save').onclick=async()=>{
       const name=($('#loc-name').value||'').trim(); if(!name){toast('Location Name is required.');return;}

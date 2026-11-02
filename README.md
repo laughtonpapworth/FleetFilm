@@ -1,49 +1,54 @@
 # Fleet Film – PWA (Firebase Auth + Firestore)
 
-Installable website for older users with big buttons and simple flows.
-Features: Login, submit films, committee review, viewing + voting, final program. Works on phones and desktops.
+Installable website for the Fleet Film committee: collect films, vote, move them through the pipeline
+and build the next programme. Designed for older users – large text, high contrast, big buttons.
 
+## Releasing an update (important)
+1. Change the files as needed.
+2. **Bump the number in `version.json`** (e.g. `2026-11-02.1` → `2026-11-15.1`).
+3. Deploy.
 
-## 1) Firebase setup
-1. Create a Firebase project (https://console.firebase.google.com).
-2. Enable **Authentication** → Sign-in methods:
-   - Google (enabled)
-   - Email/Password (enabled)
-3. Enable **Firestore** (native mode).
-4. Create a web app and copy the config into `js/firebase-config.js`.
-5. Deploy Firestore rules: copy `firestore.rules` into the Rules tab and publish.
+Anyone with the app open sees a **"A new version of Fleet Film is ready – Update now"** banner
+(checked when the app is reopened and every 30 minutes). Everyone also has a manual
+**⟳ Refresh app / Get latest version** button (top bar, phone "More" menu, Display settings, and the
+sign-in screen), which clears the app's cache and reloads. No one needs to clear browser data.
 
-Optional: In Firestore → `users/{uid}`, set `role` to `committee` or `admin` for committee members.
+The service worker (`sw.js`) is network-first: when online, pages always come from the server; the
+cache is only used offline. The first time this version is deployed it also clears the old
+`fleetfilm-v1` cache and reloads any page that the old worker had stuck on stale files.
 
-## 2) Local test
-You need to serve over **http://localhost** for service workers to work.
-- Use any static server (e.g., VSCode Live Server, `python -m http.server`).
-- Open `http://localhost:8000` (or whichever port).
+## Pipeline statuses
+`pending` → `in_progress` → `greenlist` → `next_programme` → `archived`, or `discarded` (with reason).
 
-## 3) GitHub Pages / static hosting
-- Upload the folder to GitHub (or Netlify, Vercel).
-- Update Firebase Auth → Authorized domains: add your GitHub Pages domain (e.g., `yourname.github.io`).
+Each has its own page; the Film List shows all "active" films (everything except Discarded/Archived).
 
-## 4) Using the app
-- Sign in.
-- **Submit**: add a film (title, optional year/distributor/link/synopsis, basic criteria checkbox).
-- **Review** (committee/admin): mark basic criteria, screen/program, move to Voting or Archive.
-- **Voting**: members vote (👎 / 👍 / ⭐). One vote per member per film.
-- **Program**: committee/admin can mark films as **Selected** for the program.
+## Roles & permissions (`users/{uid}` in Firestore)
+| Field | Effect |
+|---|---|
+| `role: "admin"` | Addresses page, Bulk TMDB re-fetch, Permanent Delete |
+| `canDelete: true` | Permanent Delete button only (without full admin) |
 
-## 5) Accessibility
-- Large text, high-contrast, big buttons, keyboard focus outlines.
-- Minimal screens, plain language.
+To remove a user: delete their `users/{uid}` doc **and** delete/disable their account in
+Firebase Console → Authentication, otherwise signing in again recreates the profile.
 
-## 6) Data model
-- `users/{uid}`: { displayName, email, role }
-- `films/{id}`: {
-    title, year, distributor, link, synopsis,
-    status: 'submitted' | 'reviewing' | 'voting' | 'selected' | 'archived',
-    criteria: { basic_pass, screen_program_pass },
-    createdBy, createdAt
-  }
-- `films/{id}/votes/{uid}`: { value: -1|1|2, createdAt }
+## Display settings (per device)
+"Aa Display" (top bar, or phone More menu): text size Standard / Large / Extra large, and Dark / Light colours.
+Stored in the browser, so each person sets it once on their own phone/tablet.
 
-## 7) Notes
-- This is an MVP. We can add: vote tallies, CSV export, screening dates/venues, email invites, file uploads (posters), audit logs, etc.
+## Firebase setup
+1. Firebase project with Authentication (Google + Email/Password) and Firestore.
+2. Web app config in `js/firebase-config.js`.
+3. Publish `firestore.rules`.
+4. Add the hosting domain under Authentication → Authorized domains.
+
+## Local test
+Serve over `http://localhost` (e.g. `python -m http.server`), open `http://localhost:8000`.
+
+## Data model
+- `users/{uid}`: { displayName, email, role, canDelete?, lastLoginAt }
+- `films/{id}`: { title, originalTitle, year, synopsis, runtimeMinutes, language, country, genre, director,
+  ukAgeRating, distributor, whereToSee, notes, posterUrl, tmdbId, imdbID, status, discardedReason,
+  greenAt, screenings[], programmeId, programmeDate, createdBy, createdAt }
+- `films/{id}/votes/{uid}`: { value: 1 | 0 | -1, comment, voterName, updatedAt }
+- `films/{id}/audit/{id}`: append-only history
+- `programmes/{id}`, `locations/{id}`
